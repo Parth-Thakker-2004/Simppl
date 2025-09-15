@@ -8,16 +8,17 @@ import base64
 from io import BytesIO
 from collections import Counter, defaultdict
 import re
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 import matplotlib.dates as mdates
-from wordcloud import WordCloud
+import os
+from groq import Groq
 
 # Set style for better-looking plots
 plt.style.use('default')
 sns.set_palette("husl")
 
-class InsightGraphGenerator:
-    """Generate insight-driven visualizations from social media data"""
+class GroqInsightGraphGenerator:
+    """Generate insight-driven visualizations using Groq for intelligent decisions"""
     
     def __init__(self):
         self.colors = {
@@ -30,51 +31,527 @@ class InsightGraphGenerator:
             'reddit': '#ff4500',
             'youtube': '#ff0000'
         }
+        
+        # Initialize Groq client
+        self.groq_client = None
+        groq_api_key = os.getenv('GROQ_API_KEY') or "Groq key here"
+        if groq_api_key:
+            try:
+                self.groq_client = Groq(api_key=groq_api_key)
+                print("✅ Groq client initialized for graph analysis")
+            except Exception as e:
+                print(f"⚠️ Groq initialization failed: {e}")
     
     def generate_insights_for_query(self, query: str, rag_results: List[Tuple], gemini_model=None) -> List[Dict[str, Any]]:
-        """Generate multiple insight-driven graphs for a query"""
+        """Generate graphs using Groq for intelligent decisions"""
         
-        if not rag_results:
+        if not rag_results or not self.groq_client:
             return []
         
         # Extract data from rag_results
         data = self._extract_data_from_results(rag_results)
         
-        if not data:
+        if not data or len(data) < 3:
+            print("📊 Insufficient data for meaningful graph generation")
             return []
         
-        graphs = []
+        # Use Groq to analyze query and determine graph needs
+        print("🚀 Using Groq for intelligent graph analysis...")
+        groq_analysis = self._analyze_query_with_groq(query, data)
+        
+        if not groq_analysis.get("needs_graph"):
+            print(f"🚫 Groq determined no graph needed for: {query}")
+            return []
+        
+        # Generate graph based on Groq's analysis
+        graph_result = self._generate_graph_from_groq_analysis(groq_analysis, data, query)
+        
+        if graph_result:
+            print(f"📊 Generated {groq_analysis['graph_type']} graph for query: {query}")
+            return [graph_result]
+        
+        return []
+    
+    def _analyze_query_with_groq(self, query: str, data: List[Dict]) -> Dict[str, Any]:
+        """Use Groq to determine graph needs and specifications"""
         
         try:
-            # 1. Sentiment Evolution Analysis
-            sentiment_graph = self._create_sentiment_evolution_graph(data, query)
-            if sentiment_graph:
-                graphs.append(sentiment_graph)
+            # Create data summary for Groq
+            data_summary = self._create_data_summary(data)
             
-            # 2. Platform Engagement Comparison
-            engagement_graph = self._create_platform_engagement_analysis(data, query)
-            if engagement_graph:
-                graphs.append(engagement_graph)
+            prompt = f"""
+Analyze this query and data to determine if a graph would be valuable and what type.
+
+QUERY: "{query}"
+
+AVAILABLE DATA:
+- Total posts/comments: {len(data)}
+- Platforms: {data_summary['platforms']}
+- Time range: {data_summary['time_range']}
+- Has sentiment data: {data_summary['has_sentiment']}
+- Has engagement data: {data_summary['has_engagement']}
+- Content types: {data_summary['content_types']}
+
+INSTRUCTIONS:
+1. Determine if a graph would add meaningful insights
+2. If yes, choose the best graph type and specify axes
+3. Provide inferential meaning for data points, not raw data
+4. Respond with ONLY valid JSON - no comments allowed
+
+GRAPH TYPES AVAILABLE:
+- line_chart: For trends over time
+- bar_chart: For comparisons between categories
+- scatter_plot: For correlations between two variables
+- pie_chart: For distribution/proportions
+- heatmap: For multi-dimensional data patterns
+
+Response format (JSON ONLY):
+{{
+    "needs_graph": true/false,
+    "graph_type": "line_chart/bar_chart/scatter_plot/pie_chart/heatmap",
+    "title": "Graph title",
+    "x_axis": {{
+        "label": "X-axis label",
+        "data_points": ["point1", "point2"],
+        "meaning": "What these points represent inferentially"
+    }},
+    "y_axis": {{
+        "label": "Y-axis label", 
+        "data_points": [value1, value2],
+        "meaning": "What these values represent inferentially"
+    }},
+    "insights": ["insight1", "insight2"],
+    "reasoning": "Why this graph type and data representation was chosen"
+}}
+
+EXAMPLES:
+- For "how do people feel about inflation": line_chart showing sentiment evolution over time
+- For "reddit vs youtube engagement": bar_chart comparing average engagement by platform
+- For "most discussed topics": pie_chart showing topic distribution
+
+Respond only with valid JSON:
+"""
             
-            # 3. Topic Sentiment Heatmap
-            sentiment_heatmap = self._create_sentiment_topic_heatmap(data, query)
-            if sentiment_heatmap:
-                graphs.append(sentiment_heatmap)
+            response = self.groq_client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model="llama-3.1-8b-instant",
+                temperature=0.1,
+                max_tokens=800
+            )
             
-            # 4. Engagement vs Sentiment Correlation
-            correlation_graph = self._create_engagement_sentiment_correlation(data, query)
-            if correlation_graph:
-                graphs.append(correlation_graph)
+            response_text = response.choices[0].message.content.strip()
             
-            # 5. Content Type Distribution with Insights
-            content_analysis = self._create_content_type_analysis(data, query)
-            if content_analysis:
-                graphs.append(content_analysis)
+            # Clean JSON by removing comments and extra text
+            response_text = self._clean_json_response(response_text)
+            
+            try:
+                result = json.loads(response_text)
+                print(f"🚀 Groq graph analysis: {result}")
+                return result
+            except json.JSONDecodeError:
+                print(f"⚠️ JSON parsing failed, response: {response_text}")
+                return {"needs_graph": False}
                 
         except Exception as e:
-            print(f"Error generating graphs: {e}")
+            print(f"⚠️ Groq graph analysis failed: {e}")
+            return {"needs_graph": False}
+    
+    def _clean_json_response(self, response_text: str) -> str:
+        """Clean JSON response by removing comments and extra text"""
+        # Remove // comments
+        lines = response_text.split('\n')
+        cleaned_lines = []
+        for line in lines:
+            # Remove comments after //
+            if '//' in line:
+                line = line[:line.index('//')]
+            cleaned_lines.append(line)
         
-        return graphs
+        cleaned_text = '\n'.join(cleaned_lines)
+        
+        # Try to extract JSON from response if it contains extra text
+        if '{' in cleaned_text and '}' in cleaned_text:
+            start = cleaned_text.find('{')
+            end = cleaned_text.rfind('}') + 1
+            cleaned_text = cleaned_text[start:end]
+        
+        return cleaned_text
+    
+    def _create_data_summary(self, data: List[Dict]) -> Dict[str, Any]:
+        """Create a summary of available data for Groq analysis"""
+        
+        platforms = list(set(item.get('platform', 'unknown') for item in data))
+        content_types = list(set(item.get('type', 'unknown') for item in data))
+        
+        # Check for sentiment data
+        has_sentiment = any(item.get('sentiment') for item in data)
+        
+        # Check for engagement data
+        has_engagement = any(item.get('engagement') for item in data)
+        
+        # Get time range
+        timestamps = []
+        for item in data:
+            if item.get('timestamp'):
+                try:
+                    if isinstance(item['timestamp'], str):
+                        timestamp = datetime.fromisoformat(item['timestamp'].replace('Z', '+00:00'))
+                    else:
+                        timestamp = item['timestamp']
+                    timestamps.append(timestamp)
+                except:
+                    continue
+        
+        time_range = "No temporal data"
+        if timestamps:
+            min_time = min(timestamps)
+            max_time = max(timestamps)
+            time_range = f"{min_time.strftime('%Y-%m-%d')} to {max_time.strftime('%Y-%m-%d')}"
+        
+        return {
+            'platforms': platforms,
+            'content_types': content_types,
+            'has_sentiment': has_sentiment,
+            'has_engagement': has_engagement,
+            'time_range': time_range
+        }
+    
+    def _generate_graph_from_groq_analysis(self, analysis: Dict[str, Any], data: List[Dict], query: str) -> Optional[Dict[str, Any]]:
+        """Generate graph based on Groq's analysis"""
+        
+        graph_type = analysis.get("graph_type")
+        
+        if graph_type == "line_chart":
+            return self._create_line_chart(analysis, data, query)
+        elif graph_type == "bar_chart":
+            return self._create_bar_chart(analysis, data, query)
+        elif graph_type == "scatter_plot":
+            return self._create_scatter_plot(analysis, data, query)
+        elif graph_type == "pie_chart":
+            return self._create_pie_chart(analysis, data, query)
+        elif graph_type == "heatmap":
+            return self._create_heatmap(analysis, data, query)
+        else:
+            print(f"⚠️ Unknown graph type: {graph_type}")
+            return None
+    
+    def _create_line_chart(self, analysis: Dict[str, Any], data: List[Dict], query: str) -> Dict[str, Any]:
+        """Create line chart based on Groq analysis"""
+        
+        fig, ax = plt.subplots(figsize=(12, 6))
+        
+        # Extract data points from analysis
+        x_data = analysis.get("x_axis", {}).get("data_points", [])
+        y_data = analysis.get("y_axis", {}).get("data_points", [])
+        
+        # If Groq didn't provide specific data, generate from actual data
+        if not x_data or not y_data:
+            x_data, y_data = self._extract_time_series_data(data)
+        
+        # Ensure we have valid data
+        if len(x_data) != len(y_data) or len(x_data) == 0:
+            x_data = list(range(len(data)))
+            y_data = [item.get('relevance_score', 0.5) for item in data]
+        
+        # Create line plot
+        ax.plot(x_data, y_data, marker='o', linewidth=2, markersize=6, color=self.colors['primary'])
+        
+        # Customize plot
+        ax.set_title(analysis.get("title", f"Line Chart Analysis for '{query}'"), fontsize=14, fontweight='bold')
+        ax.set_xlabel(analysis.get("x_axis", {}).get("label", "Data Points"), fontsize=12)
+        ax.set_ylabel(analysis.get("y_axis", {}).get("label", "Values"), fontsize=12)
+        ax.grid(True, alpha=0.3)
+        
+        # Add trend line if enough points
+        if len(x_data) > 3:
+            z = np.polyfit(range(len(x_data)), y_data, 1)
+            p = np.poly1d(z)
+            ax.plot(range(len(x_data)), p(range(len(x_data))), "--", alpha=0.8, color=self.colors['danger'])
+        
+        plt.tight_layout()
+        
+        # Convert to base64
+        img_buffer = BytesIO()
+        plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+        img_buffer.seek(0)
+        img_base64 = base64.b64encode(img_buffer.getvalue()).decode()
+        plt.close()
+        
+        return {
+            'type': 'line_chart',
+            'title': analysis.get("title", f"Line Chart for '{query}'"),
+            'description': analysis.get("reasoning", "Line chart showing trends in the data"),
+            'insights': analysis.get("insights", [f"Analysis of {len(data)} data points"]),
+            'image': f"data:image/png;base64,{img_base64}",
+            'data_points': len(data)
+        }
+    
+    def _create_bar_chart(self, analysis: Dict[str, Any], data: List[Dict], query: str) -> Dict[str, Any]:
+        """Create bar chart based on Groq analysis"""
+        
+        fig, ax = plt.subplots(figsize=(10, 6))
+        
+        # Extract data points from analysis
+        x_data = analysis.get("x_axis", {}).get("data_points", [])
+        y_data = analysis.get("y_axis", {}).get("data_points", [])
+        
+        # If Groq didn't provide specific data, generate from actual data
+        if not x_data or not y_data:
+            x_data, y_data = self._extract_categorical_data(data)
+        
+        # Create bar plot
+        bars = ax.bar(x_data, y_data, color=[self.colors['primary'], self.colors['secondary'], 
+                                            self.colors['success'], self.colors['warning']][:len(x_data)])
+        
+        # Customize plot
+        ax.set_title(analysis.get("title", f"Bar Chart Analysis for '{query}'"), fontsize=14, fontweight='bold')
+        ax.set_xlabel(analysis.get("x_axis", {}).get("label", "Categories"), fontsize=12)
+        ax.set_ylabel(analysis.get("y_axis", {}).get("label", "Values"), fontsize=12)
+        
+        # Add value labels on bars
+        for bar in bars:
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height,
+                   f'{height:.1f}', ha='center', va='bottom')
+        
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        
+        # Convert to base64
+        img_buffer = BytesIO()
+        plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+        img_buffer.seek(0)
+        img_base64 = base64.b64encode(img_buffer.getvalue()).decode()
+        plt.close()
+        
+        return {
+            'type': 'bar_chart',
+            'title': analysis.get("title", f"Bar Chart for '{query}'"),
+            'description': analysis.get("reasoning", "Bar chart showing categorical comparisons"),
+            'insights': analysis.get("insights", [f"Comparison of {len(x_data)} categories"]),
+            'image': f"data:image/png;base64,{img_base64}",
+            'data_points': len(data)
+        }
+    
+    def _create_scatter_plot(self, analysis: Dict[str, Any], data: List[Dict], query: str) -> Dict[str, Any]:
+        """Create scatter plot based on Groq analysis"""
+        
+        fig, ax = plt.subplots(figsize=(10, 8))
+        
+        # Extract data points from analysis
+        x_data = analysis.get("x_axis", {}).get("data_points", [])
+        y_data = analysis.get("y_axis", {}).get("data_points", [])
+        
+        # If Groq didn't provide specific data, generate from actual data
+        if not x_data or not y_data:
+            x_data, y_data = self._extract_correlation_data(data)
+        
+        # Create scatter plot
+        ax.scatter(x_data, y_data, alpha=0.6, s=60, color=self.colors['primary'])
+        
+        # Add correlation line if enough points
+        if len(x_data) > 3:
+            z = np.polyfit(x_data, y_data, 1)
+            p = np.poly1d(z)
+            ax.plot(x_data, p(x_data), "--", alpha=0.8, color=self.colors['danger'])
+            
+            # Calculate correlation coefficient
+            correlation = np.corrcoef(x_data, y_data)[0, 1]
+            ax.text(0.05, 0.95, f'Correlation: {correlation:.3f}', transform=ax.transAxes,
+                   bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+        
+        # Customize plot
+        ax.set_title(analysis.get("title", f"Scatter Plot Analysis for '{query}'"), fontsize=14, fontweight='bold')
+        ax.set_xlabel(analysis.get("x_axis", {}).get("label", "X Values"), fontsize=12)
+        ax.set_ylabel(analysis.get("y_axis", {}).get("label", "Y Values"), fontsize=12)
+        ax.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        
+        # Convert to base64
+        img_buffer = BytesIO()
+        plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+        img_buffer.seek(0)
+        img_base64 = base64.b64encode(img_buffer.getvalue()).decode()
+        plt.close()
+        
+        return {
+            'type': 'scatter_plot',
+            'title': analysis.get("title", f"Scatter Plot for '{query}'"),
+            'description': analysis.get("reasoning", "Scatter plot showing correlations in the data"),
+            'insights': analysis.get("insights", [f"Correlation analysis of {len(data)} data points"]),
+            'image': f"data:image/png;base64,{img_base64}",
+            'data_points': len(data)
+        }
+    
+    def _create_pie_chart(self, analysis: Dict[str, Any], data: List[Dict], query: str) -> Dict[str, Any]:
+        """Create pie chart based on Groq analysis"""
+        
+        fig, ax = plt.subplots(figsize=(10, 8))
+        
+        # Extract data points from analysis
+        labels = analysis.get("x_axis", {}).get("data_points", [])
+        sizes = analysis.get("y_axis", {}).get("data_points", [])
+        
+        # If Groq didn't provide specific data, generate from actual data
+        if not labels or not sizes:
+            labels, sizes = self._extract_distribution_data(data)
+        
+        # Create pie chart
+        colors = [self.colors['primary'], self.colors['secondary'], self.colors['success'], 
+                 self.colors['warning'], self.colors['info'], self.colors['danger']]
+        
+        wedges, texts, autotexts = ax.pie(sizes, labels=labels, autopct='%1.1f%%', 
+                                         colors=colors[:len(labels)], startangle=90)
+        
+        # Customize plot
+        ax.set_title(analysis.get("title", f"Distribution Analysis for '{query}'"), fontsize=14, fontweight='bold')
+        
+        plt.tight_layout()
+        
+        # Convert to base64
+        img_buffer = BytesIO()
+        plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+        img_buffer.seek(0)
+        img_base64 = base64.b64encode(img_buffer.getvalue()).decode()
+        plt.close()
+        
+        return {
+            'type': 'pie_chart',
+            'title': analysis.get("title", f"Pie Chart for '{query}'"),
+            'description': analysis.get("reasoning", "Pie chart showing distribution of data"),
+            'insights': analysis.get("insights", [f"Distribution analysis of {len(data)} data points"]),
+            'image': f"data:image/png;base64,{img_base64}",
+            'data_points': len(data)
+        }
+    
+    def _create_heatmap(self, analysis: Dict[str, Any], data: List[Dict], query: str) -> Dict[str, Any]:
+        """Create heatmap based on Groq analysis"""
+        
+        fig, ax = plt.subplots(figsize=(12, 8))
+        
+        # Create sample heatmap data
+        heatmap_data = self._extract_heatmap_data(data)
+        
+        # Create heatmap
+        sns.heatmap(heatmap_data, annot=True, cmap='YlOrRd', ax=ax, fmt='.2f')
+        
+        # Customize plot
+        ax.set_title(analysis.get("title", f"Heatmap Analysis for '{query}'"), fontsize=14, fontweight='bold')
+        
+        plt.tight_layout()
+        
+        # Convert to base64
+        img_buffer = BytesIO()
+        plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+        img_buffer.seek(0)
+        img_base64 = base64.b64encode(img_buffer.getvalue()).decode()
+        plt.close()
+        
+        return {
+            'type': 'heatmap',
+            'title': analysis.get("title", f"Heatmap for '{query}'"),
+            'description': analysis.get("reasoning", "Heatmap showing multi-dimensional data patterns"),
+            'insights': analysis.get("insights", [f"Pattern analysis of {len(data)} data points"]),
+            'image': f"data:image/png;base64,{img_base64}",
+            'data_points': len(data)
+        }
+    
+    # Data extraction helper methods
+    def _extract_time_series_data(self, data: List[Dict]) -> Tuple[List, List]:
+        """Extract time series data for line charts"""
+        timestamps = []
+        values = []
+        
+        for item in data:
+            if item.get('timestamp'):
+                try:
+                    if isinstance(item['timestamp'], str):
+                        timestamp = datetime.fromisoformat(item['timestamp'].replace('Z', '+00:00'))
+                    else:
+                        timestamp = item['timestamp']
+                    timestamps.append(timestamp)
+                    
+                    # Use relevance score or sentiment as value
+                    if item.get('sentiment'):
+                        sentiment = item['sentiment']
+                        value = sentiment.get('positive', 0) - sentiment.get('negative', 0)
+                    else:
+                        value = item.get('relevance_score', 0.5)
+                    values.append(value)
+                except:
+                    continue
+        
+        if not timestamps:
+            return list(range(len(data))), [item.get('relevance_score', 0.5) for item in data]
+        
+        # Sort by timestamp
+        sorted_data = sorted(zip(timestamps, values))
+        timestamps, values = zip(*sorted_data)
+        
+        return list(timestamps), list(values)
+    
+    def _extract_categorical_data(self, data: List[Dict]) -> Tuple[List[str], List[float]]:
+        """Extract categorical data for bar charts"""
+        # Group by platform
+        platform_counts = Counter(item.get('platform', 'unknown') for item in data)
+        
+        if len(platform_counts) == 1:
+            # Group by content type instead
+            type_counts = Counter(item.get('type', 'unknown') for item in data)
+            return list(type_counts.keys()), list(type_counts.values())
+        
+        return list(platform_counts.keys()), list(platform_counts.values())
+    
+    def _extract_correlation_data(self, data: List[Dict]) -> Tuple[List[float], List[float]]:
+        """Extract correlation data for scatter plots"""
+        x_values = []
+        y_values = []
+        
+        for item in data:
+            # Use relevance score as x
+            x_val = item.get('relevance_score', 0.5)
+            
+            # Use engagement or sentiment as y
+            if item.get('engagement'):
+                engagement = item['engagement']
+                if isinstance(engagement, dict):
+                    y_val = engagement.get('score', 0) or engagement.get('likes', 0) or engagement.get('upvotes', 0)
+                else:
+                    y_val = float(engagement) if engagement else 0
+            elif item.get('sentiment'):
+                sentiment = item['sentiment']
+                y_val = sentiment.get('positive', 0) - sentiment.get('negative', 0)
+            else:
+                y_val = len(item.get('content', '')) / 100  # Content length proxy
+            
+            x_values.append(x_val)
+            y_values.append(y_val)
+        
+        return x_values, y_values
+    
+    def _extract_distribution_data(self, data: List[Dict]) -> Tuple[List[str], List[int]]:
+        """Extract distribution data for pie charts"""
+        platform_counts = Counter(item.get('platform', 'unknown') for item in data)
+        return list(platform_counts.keys()), list(platform_counts.values())
+    
+    def _extract_heatmap_data(self, data: List[Dict]) -> pd.DataFrame:
+        """Extract data for heatmap visualization"""
+        # Create a simple platform vs time heatmap
+        platforms = list(set(item.get('platform', 'unknown') for item in data))
+        
+        # Create sample data matrix
+        matrix_data = []
+        for platform in platforms:
+            platform_data = [item for item in data if item.get('platform') == platform]
+            row = [len(platform_data), 
+                   np.mean([item.get('relevance_score', 0.5) for item in platform_data]),
+                   len([item for item in platform_data if item.get('sentiment', {}).get('positive', 0) > 0.5])]
+            matrix_data.append(row)
+        
+        return pd.DataFrame(matrix_data, 
+                           index=platforms, 
+                           columns=['Count', 'Avg Relevance', 'Positive Posts'])
     
     def _extract_data_from_results(self, rag_results: List[Tuple]) -> List[Dict]:
         """Extract structured data from RAG results"""
@@ -126,496 +603,3 @@ class InsightGraphGenerator:
                 continue
         
         return data
-    
-    def _create_sentiment_evolution_graph(self, data: List[Dict], query: str) -> Dict[str, Any]:
-        """Create sentiment evolution over time analysis"""
-        
-        # Filter data with timestamps and sentiment
-        time_data = []
-        for item in data:
-            if item.get('timestamp') and item.get('sentiment'):
-                try:
-                    # Parse timestamp
-                    if isinstance(item['timestamp'], str):
-                        timestamp = datetime.fromisoformat(item['timestamp'].replace('Z', '+00:00'))
-                    else:
-                        timestamp = item['timestamp']
-                    
-                    sentiment = item['sentiment']
-                    time_data.append({
-                        'timestamp': timestamp,
-                        'positive': sentiment.get('positive', 0),
-                        'negative': sentiment.get('negative', 0),
-                        'neutral': sentiment.get('neutral', 0),
-                        'platform': item['platform']
-                    })
-                except:
-                    continue
-        
-        if len(time_data) < 3:
-            return None
-        
-        # Create the plot
-        fig, ax = plt.subplots(figsize=(12, 6))
-        
-        # Convert to DataFrame for easier manipulation
-        df = pd.DataFrame(time_data)
-        df = df.sort_values('timestamp')
-        
-        # Group by day and calculate average sentiment
-        df['date'] = df['timestamp'].dt.date
-        daily_sentiment = df.groupby('date')[['positive', 'negative', 'neutral']].mean()
-        
-        # Plot sentiment evolution
-        dates = daily_sentiment.index
-        ax.plot(dates, daily_sentiment['positive'], label='Positive Sentiment', color=self.colors['success'], linewidth=2)
-        ax.plot(dates, daily_sentiment['negative'], label='Negative Sentiment', color=self.colors['danger'], linewidth=2)
-        ax.plot(dates, daily_sentiment['neutral'], label='Neutral Sentiment', color=self.colors['info'], linewidth=2)
-        
-        # Customize the plot
-        ax.set_title(f'Sentiment Evolution for "{query}"', fontsize=14, fontweight='bold')
-        ax.set_xlabel('Date', fontsize=12)
-        ax.set_ylabel('Average Sentiment Score', fontsize=12)
-        ax.legend()
-        ax.grid(True, alpha=0.3)
-        
-        # Format x-axis
-        ax.tick_params(axis='x', rotation=45)
-        
-        # Add insights text
-        latest_sentiment = daily_sentiment.iloc[-1]
-        dominant_sentiment = latest_sentiment.idxmax()
-        insight_text = f"Current trend: {dominant_sentiment.title()} sentiment dominates\n"
-        insight_text += f"Latest scores - Positive: {latest_sentiment['positive']:.2f}, "
-        insight_text += f"Negative: {latest_sentiment['negative']:.2f}"
-        
-        ax.text(0.02, 0.98, insight_text, transform=ax.transAxes, fontsize=10,
-                verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
-        
-        plt.tight_layout()
-        
-        # Convert to base64
-        img_buffer = BytesIO()
-        plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-        img_buffer.seek(0)
-        img_base64 = base64.b64encode(img_buffer.getvalue()).decode()
-        plt.close()
-        
-        return {
-            'type': 'sentiment_evolution',
-            'title': f'Sentiment Evolution for "{query}"',
-            'description': f'Analysis of how public sentiment about {query} has evolved over time across social media platforms',
-            'insights': [
-                f"Current dominant sentiment: {dominant_sentiment.title()}",
-                f"Total posts analyzed: {len(time_data)}",
-                f"Time range: {min(df['timestamp']).strftime('%Y-%m-%d')} to {max(df['timestamp']).strftime('%Y-%m-%d')}"
-            ],
-            'image': f"data:image/png;base64,{img_base64}",
-            'data_points': len(time_data)
-        }
-    
-    def _create_platform_engagement_analysis(self, data: List[Dict], query: str) -> Dict[str, Any]:
-        """Create platform engagement comparison analysis"""
-        
-        # Group by platform and calculate engagement metrics
-        platform_stats = defaultdict(lambda: {'posts': 0, 'total_engagement': 0, 'avg_sentiment': []})
-        
-        for item in data:
-            platform = item['platform']
-            platform_stats[platform]['posts'] += 1
-            
-            # Calculate engagement score
-            engagement = item.get('engagement', {})
-            engagement_score = 0
-            if isinstance(engagement, dict):
-                likes = engagement.get('likes', 0) or 0
-                dislikes = engagement.get('dislikes', 0) or 0
-                engagement_score = likes - dislikes
-            
-            platform_stats[platform]['total_engagement'] += engagement_score
-            
-            # Add sentiment
-            sentiment = item.get('sentiment', {})
-            if sentiment:
-                sentiment_score = sentiment.get('positive', 0) - sentiment.get('negative', 0)
-                platform_stats[platform]['avg_sentiment'].append(sentiment_score)
-        
-        if len(platform_stats) < 2:
-            return None
-        
-        # Calculate averages
-        for platform in platform_stats:
-            stats = platform_stats[platform]
-            stats['avg_engagement'] = stats['total_engagement'] / stats['posts'] if stats['posts'] > 0 else 0
-            stats['avg_sentiment_score'] = np.mean(stats['avg_sentiment']) if stats['avg_sentiment'] else 0
-        
-        # Create the plot
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
-        
-        platforms = list(platform_stats.keys())
-        post_counts = [platform_stats[p]['posts'] for p in platforms]
-        avg_engagements = [platform_stats[p]['avg_engagement'] for p in platforms]
-        avg_sentiments = [platform_stats[p]['avg_sentiment_score'] for p in platforms]
-        
-        colors = [self.colors['reddit'] if 'reddit' in p.lower() else self.colors['youtube'] for p in platforms]
-        
-        # Plot 1: Post count vs Average engagement
-        scatter = ax1.scatter(post_counts, avg_engagements, c=colors, s=200, alpha=0.7, edgecolors='black')
-        
-        for i, platform in enumerate(platforms):
-            ax1.annotate(platform, (post_counts[i], avg_engagements[i]), 
-                        xytext=(5, 5), textcoords='offset points', fontweight='bold')
-        
-        ax1.set_title(f'Platform Engagement Analysis for "{query}"', fontsize=14, fontweight='bold')
-        ax1.set_xlabel('Number of Posts', fontsize=12)
-        ax1.set_ylabel('Average Engagement Score', fontsize=12)
-        ax1.grid(True, alpha=0.3)
-        
-        # Plot 2: Sentiment by platform
-        bars = ax2.bar(platforms, avg_sentiments, color=colors, alpha=0.7, edgecolor='black')
-        ax2.set_title('Average Sentiment by Platform', fontsize=14, fontweight='bold')
-        ax2.set_xlabel('Platform', fontsize=12)
-        ax2.set_ylabel('Average Sentiment Score', fontsize=12)
-        ax2.grid(True, alpha=0.3, axis='y')
-        
-        # Add value labels on bars
-        for bar, value in zip(bars, avg_sentiments):
-            height = bar.get_height()
-            ax2.text(bar.get_x() + bar.get_width()/2., height + (0.01 if height >= 0 else -0.03),
-                    f'{value:.2f}', ha='center', va='bottom' if height >= 0 else 'top', fontweight='bold')
-        
-        plt.tight_layout()
-        
-        # Convert to base64
-        img_buffer = BytesIO()
-        plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-        img_buffer.seek(0)
-        img_base64 = base64.b64encode(img_buffer.getvalue()).decode()
-        plt.close()
-        
-        # Generate insights
-        most_active_platform = max(platforms, key=lambda p: platform_stats[p]['posts'])
-        most_engaged_platform = max(platforms, key=lambda p: platform_stats[p]['avg_engagement'])
-        most_positive_platform = max(platforms, key=lambda p: platform_stats[p]['avg_sentiment_score'])
-        
-        return {
-            'type': 'platform_analysis',
-            'title': f'Platform Engagement Analysis for "{query}"',
-            'description': f'Comparative analysis of how different platforms discuss {query}',
-            'insights': [
-                f"Most active platform: {most_active_platform} ({platform_stats[most_active_platform]['posts']} posts)",
-                f"Highest engagement: {most_engaged_platform} (avg: {platform_stats[most_engaged_platform]['avg_engagement']:.1f})",
-                f"Most positive sentiment: {most_positive_platform} (score: {platform_stats[most_positive_platform]['avg_sentiment_score']:.2f})"
-            ],
-            'image': f"data:image/png;base64,{img_base64}",
-            'data_points': len(data)
-        }
-    
-    def _create_sentiment_topic_heatmap(self, data: List[Dict], query: str) -> Dict[str, Any]:
-        """Create sentiment analysis heatmap by content type and platform"""
-        
-        # Extract sentiment by platform and content type
-        sentiment_matrix = defaultdict(lambda: defaultdict(list))
-        
-        for item in data:
-            platform = item['platform']
-            content_type = item.get('type', 'unknown')
-            sentiment = item.get('sentiment', {})
-            
-            if sentiment:
-                # Calculate net sentiment score
-                net_sentiment = sentiment.get('positive', 0) - sentiment.get('negative', 0)
-                sentiment_matrix[platform][content_type].append(net_sentiment)
-        
-        if len(sentiment_matrix) < 1:
-            return None
-        
-        # Create matrix for heatmap
-        platforms = list(sentiment_matrix.keys())
-        content_types = set()
-        for platform_data in sentiment_matrix.values():
-            content_types.update(platform_data.keys())
-        content_types = list(content_types)
-        
-        if len(platforms) < 1 or len(content_types) < 1:
-            return None
-        
-        # Calculate average sentiment for each cell
-        heatmap_data = np.zeros((len(platforms), len(content_types)))
-        for i, platform in enumerate(platforms):
-            for j, content_type in enumerate(content_types):
-                sentiments = sentiment_matrix[platform][content_type]
-                if sentiments:
-                    heatmap_data[i, j] = np.mean(sentiments)
-        
-        # Create the heatmap
-        fig, ax = plt.subplots(figsize=(10, 6))
-        
-        im = ax.imshow(heatmap_data, cmap='RdYlGn', aspect='auto', vmin=-1, vmax=1)
-        
-        # Set ticks and labels
-        ax.set_xticks(np.arange(len(content_types)))
-        ax.set_yticks(np.arange(len(platforms)))
-        ax.set_xticklabels(content_types)
-        ax.set_yticklabels(platforms)
-        
-        # Rotate the tick labels and set their alignment
-        plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
-        
-        # Add colorbar
-        cbar = ax.figure.colorbar(im, ax=ax)
-        cbar.ax.set_ylabel('Average Sentiment Score', rotation=-90, va="bottom")
-        
-        # Add text annotations
-        for i in range(len(platforms)):
-            for j in range(len(content_types)):
-                count = len(sentiment_matrix[platforms[i]][content_types[j]])
-                if count > 0:
-                    text = ax.text(j, i, f'{heatmap_data[i, j]:.2f}\n({count})',
-                                 ha="center", va="center", color="black", fontweight='bold')
-        
-        ax.set_title(f'Sentiment Heatmap by Platform and Content Type\nTopic: "{query}"', 
-                    fontsize=14, fontweight='bold')
-        
-        plt.tight_layout()
-        
-        # Convert to base64
-        img_buffer = BytesIO()
-        plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-        img_buffer.seek(0)
-        img_base64 = base64.b64encode(img_buffer.getvalue()).decode()
-        plt.close()
-        
-        # Find insights
-        max_sentiment_idx = np.unravel_index(np.argmax(heatmap_data), heatmap_data.shape)
-        min_sentiment_idx = np.unravel_index(np.argmin(heatmap_data), heatmap_data.shape)
-        
-        most_positive = f"{platforms[max_sentiment_idx[0]]} {content_types[max_sentiment_idx[1]]}"
-        most_negative = f"{platforms[min_sentiment_idx[0]]} {content_types[min_sentiment_idx[1]]}"
-        
-        return {
-            'type': 'sentiment_heatmap',
-            'title': f'Sentiment Analysis Heatmap for "{query}"',
-            'description': f'Sentiment distribution across platforms and content types for {query}',
-            'insights': [
-                f"Most positive: {most_positive} (score: {heatmap_data[max_sentiment_idx]:.2f})",
-                f"Most negative: {most_negative} (score: {heatmap_data[min_sentiment_idx]:.2f})",
-                f"Analyzed {len(platforms)} platforms and {len(content_types)} content types"
-            ],
-            'image': f"data:image/png;base64,{img_base64}",
-            'data_points': len(data)
-        }
-    
-    def _create_engagement_sentiment_correlation(self, data: List[Dict], query: str) -> Dict[str, Any]:
-        """Create correlation analysis between engagement and sentiment"""
-        
-        # Extract engagement and sentiment data
-        engagement_sentiment_data = []
-        for item in data:
-            engagement = item.get('engagement', {})
-            sentiment = item.get('sentiment', {})
-            
-            if engagement and sentiment:
-                # Calculate engagement score
-                likes = engagement.get('likes', 0) or 0
-                dislikes = engagement.get('dislikes', 0) or 0
-                engagement_score = likes + abs(dislikes)  # Total engagement
-                
-                # Calculate sentiment score
-                sentiment_score = sentiment.get('positive', 0) - sentiment.get('negative', 0)
-                
-                if engagement_score > 0:  # Only include posts with engagement
-                    engagement_sentiment_data.append({
-                        'engagement': engagement_score,
-                        'sentiment': sentiment_score,
-                        'platform': item['platform'],
-                        'type': item.get('type', 'unknown'),
-                        'content_length': item['content_length']
-                    })
-        
-        if len(engagement_sentiment_data) < 5:
-            return None
-        
-        # Create the plot
-        fig, ax = plt.subplots(figsize=(10, 6))
-        
-        # Separate by platform for different colors
-        platforms = set(item['platform'] for item in engagement_sentiment_data)
-        colors_map = {list(platforms)[0]: self.colors['reddit'], 
-                     list(platforms)[1] if len(platforms) > 1 else list(platforms)[0]: self.colors['youtube']}
-        
-        for platform in platforms:
-            platform_data = [item for item in engagement_sentiment_data if item['platform'] == platform]
-            x = [item['engagement'] for item in platform_data]
-            y = [item['sentiment'] for item in platform_data]
-            
-            ax.scatter(x, y, c=colors_map.get(platform, self.colors['primary']), 
-                      label=platform, alpha=0.6, s=60, edgecolors='black')
-        
-        # Add trend line
-        all_engagement = [item['engagement'] for item in engagement_sentiment_data]
-        all_sentiment = [item['sentiment'] for item in engagement_sentiment_data]
-        
-        if len(all_engagement) > 1:
-            z = np.polyfit(all_engagement, all_sentiment, 1)
-            p = np.poly1d(z)
-            ax.plot(all_engagement, p(all_engagement), "r--", alpha=0.8, linewidth=2, label='Trend')
-            
-            # Calculate correlation
-            correlation = np.corrcoef(all_engagement, all_sentiment)[0, 1]
-        else:
-            correlation = 0
-        
-        ax.set_title(f'Engagement vs Sentiment Correlation\nTopic: "{query}"', 
-                    fontsize=14, fontweight='bold')
-        ax.set_xlabel('Total Engagement (Likes + Dislikes)', fontsize=12)
-        ax.set_ylabel('Sentiment Score (Positive - Negative)', fontsize=12)
-        ax.legend()
-        ax.grid(True, alpha=0.3)
-        
-        # Add correlation info
-        correlation_text = f'Correlation: {correlation:.3f}\n'
-        if abs(correlation) > 0.5:
-            correlation_text += 'Strong correlation'
-        elif abs(correlation) > 0.3:
-            correlation_text += 'Moderate correlation'
-        else:
-            correlation_text += 'Weak correlation'
-        
-        ax.text(0.02, 0.98, correlation_text, transform=ax.transAxes, fontsize=11,
-                verticalalignment='top', bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8))
-        
-        plt.tight_layout()
-        
-        # Convert to base64
-        img_buffer = BytesIO()
-        plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-        img_buffer.seek(0)
-        img_base64 = base64.b64encode(img_buffer.getvalue()).decode()
-        plt.close()
-        
-        # Generate insights
-        high_engagement_items = [item for item in engagement_sentiment_data 
-                               if item['engagement'] > np.percentile(all_engagement, 75)]
-        avg_sentiment_high_engagement = np.mean([item['sentiment'] for item in high_engagement_items]) if high_engagement_items else 0
-        
-        return {
-            'type': 'engagement_correlation',
-            'title': f'Engagement vs Sentiment Analysis for "{query}"',
-            'description': f'Analysis of how engagement levels correlate with sentiment for {query}',
-            'insights': [
-                f"Correlation coefficient: {correlation:.3f}",
-                f"High-engagement posts average sentiment: {avg_sentiment_high_engagement:.2f}",
-                f"Total posts analyzed: {len(engagement_sentiment_data)}"
-            ],
-            'image': f"data:image/png;base64,{img_base64}",
-            'data_points': len(engagement_sentiment_data)
-        }
-    
-    def _create_content_type_analysis(self, data: List[Dict], query: str) -> Dict[str, Any]:
-        """Create content type distribution and performance analysis"""
-        
-        # Analyze content types
-        content_analysis = defaultdict(lambda: {
-            'count': 0, 
-            'total_engagement': 0, 
-            'sentiment_scores': [],
-            'avg_length': [],
-            'relevance_scores': []
-        })
-        
-        for item in data:
-            content_type = item.get('type', 'unknown')
-            analysis = content_analysis[content_type]
-            
-            analysis['count'] += 1
-            analysis['avg_length'].append(item['content_length'])
-            analysis['relevance_scores'].append(item['relevance_score'])
-            
-            # Add engagement
-            engagement = item.get('engagement', {})
-            if isinstance(engagement, dict):
-                likes = engagement.get('likes', 0) or 0
-                dislikes = engagement.get('dislikes', 0) or 0
-                analysis['total_engagement'] += (likes + abs(dislikes))
-            
-            # Add sentiment
-            sentiment = item.get('sentiment', {})
-            if sentiment:
-                sentiment_score = sentiment.get('positive', 0) - sentiment.get('negative', 0)
-                analysis['sentiment_scores'].append(sentiment_score)
-        
-        # Calculate averages
-        for content_type in content_analysis:
-            analysis = content_analysis[content_type]
-            analysis['avg_engagement'] = analysis['total_engagement'] / analysis['count']
-            analysis['avg_sentiment'] = np.mean(analysis['sentiment_scores']) if analysis['sentiment_scores'] else 0
-            analysis['avg_length'] = np.mean(analysis['avg_length'])
-            analysis['avg_relevance'] = np.mean(analysis['relevance_scores'])
-        
-        if len(content_analysis) < 2:
-            return None
-        
-        # Create the plot
-        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 12))
-        
-        content_types = list(content_analysis.keys())
-        counts = [content_analysis[ct]['count'] for ct in content_types]
-        avg_sentiments = [content_analysis[ct]['avg_sentiment'] for ct in content_types]
-        avg_engagements = [content_analysis[ct]['avg_engagement'] for ct in content_types]
-        avg_relevance = [content_analysis[ct]['avg_relevance'] for ct in content_types]
-        
-        # Plot 1: Content type distribution (pie chart)
-        colors = plt.cm.Set3(np.linspace(0, 1, len(content_types)))
-        wedges, texts, autotexts = ax1.pie(counts, labels=content_types, autopct='%1.1f%%', 
-                                          colors=colors, startangle=90)
-        ax1.set_title('Content Type Distribution', fontsize=12, fontweight='bold')
-        
-        # Plot 2: Average sentiment by content type
-        bars2 = ax2.bar(content_types, avg_sentiments, color=colors, alpha=0.7, edgecolor='black')
-        ax2.set_title('Average Sentiment by Content Type', fontsize=12, fontweight='bold')
-        ax2.set_ylabel('Average Sentiment Score')
-        ax2.tick_params(axis='x', rotation=45)
-        ax2.grid(True, alpha=0.3, axis='y')
-        
-        # Plot 3: Average engagement by content type
-        bars3 = ax3.bar(content_types, avg_engagements, color=colors, alpha=0.7, edgecolor='black')
-        ax3.set_title('Average Engagement by Content Type', fontsize=12, fontweight='bold')
-        ax3.set_ylabel('Average Engagement Score')
-        ax3.tick_params(axis='x', rotation=45)
-        ax3.grid(True, alpha=0.3, axis='y')
-        
-        # Plot 4: Average relevance by content type
-        bars4 = ax4.bar(content_types, avg_relevance, color=colors, alpha=0.7, edgecolor='black')
-        ax4.set_title('Average Relevance Score by Content Type', fontsize=12, fontweight='bold')
-        ax4.set_ylabel('Average Relevance Score')
-        ax4.tick_params(axis='x', rotation=45)
-        ax4.grid(True, alpha=0.3, axis='y')
-        
-        plt.suptitle(f'Content Analysis for "{query}"', fontsize=16, fontweight='bold')
-        plt.tight_layout()
-        
-        # Convert to base64
-        img_buffer = BytesIO()
-        plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-        img_buffer.seek(0)
-        img_base64 = base64.b64encode(img_buffer.getvalue()).decode()
-        plt.close()
-        
-        # Generate insights
-        most_common_type = max(content_types, key=lambda ct: content_analysis[ct]['count'])
-        most_engaging_type = max(content_types, key=lambda ct: content_analysis[ct]['avg_engagement'])
-        most_relevant_type = max(content_types, key=lambda ct: content_analysis[ct]['avg_relevance'])
-        
-        return {
-            'type': 'content_analysis',
-            'title': f'Content Type Analysis for "{query}"',
-            'description': f'Comprehensive analysis of how different content types perform when discussing {query}',
-            'insights': [
-                f"Most common content type: {most_common_type} ({content_analysis[most_common_type]['count']} posts)",
-                f"Most engaging content type: {most_engaging_type} (avg: {content_analysis[most_engaging_type]['avg_engagement']:.1f})",
-                f"Most relevant content type: {most_relevant_type} (score: {content_analysis[most_relevant_type]['avg_relevance']:.3f})"
-            ],
-            'image': f"data:image/png;base64,{img_base64}",
-            'data_points': len(data)
-        }

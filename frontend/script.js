@@ -248,7 +248,7 @@ class ChatApp {
             this.removeTypingIndicator(typingId);
 
             if (data.response) {
-                this.addMessage(data.response, 'assistant', data.sources, data.graphs);
+                this.addMessage(data.response, 'assistant', data.sources, data.graphs, data.generated_image);
             } else {
                 throw new Error(data.error || 'Unknown error');
             }
@@ -260,7 +260,7 @@ class ChatApp {
         }
     }
 
-    addMessage(content, role, sources = null, graphs = null) {
+    addMessage(content, role, sources = null, graphs = null, generatedImage = null) {
         const messageElement = document.createElement('div');
         messageElement.className = `message ${role}`;
 
@@ -277,6 +277,12 @@ class ChatApp {
         if (graphs && graphs.length > 0) {
             graphsHtml = this.generateGraphsHtml(graphs);
         }
+        
+        // Generate image HTML if available
+        let imageHtml = '';
+        if (generatedImage) {
+            imageHtml = this.generateImageHtml(generatedImage);
+        }
 
         messageElement.innerHTML = `
             <div class="message-header">
@@ -285,6 +291,7 @@ class ChatApp {
             </div>
             <div class="message-content">
                 ${this.formatMessage(content)}
+                ${imageHtml}
                 ${graphsHtml}
                 ${sourcesHtml}
             </div>
@@ -458,6 +465,32 @@ class ChatApp {
                     <img src="${imgSrc}" alt="${selectedGraph.title}">
                 </div>
                 <div class="graph-description">${selectedGraph.description}</div>
+            </div>
+        `;
+        
+        html += '</div>';
+        return html;
+    }
+
+    generateImageHtml(generatedImage) {
+        if (!generatedImage) return '';
+        
+        let html = '<div class="generated-image-container">';
+        html += '<div class="generated-image-header">🖼️ Related Visual</div>';
+        
+        html += `
+            <div class="generated-image-item">
+                <div class="generated-image-wrapper">
+                    <img src="${generatedImage.url}" alt="${generatedImage.description}" loading="lazy">
+                    <div class="image-overlay">
+                        <div class="image-caption">${generatedImage.description}</div>
+                    </div>
+                </div>
+                <div class="image-metadata">
+                    <span class="image-search-term">Search: ${generatedImage.search_term}</span>
+                    <span class="image-source">Source: ${generatedImage.source}</span>
+                    ${generatedImage.photographer ? `<span class="image-photographer">by ${generatedImage.photographer}</span>` : ''}
+                </div>
             </div>
         `;
         

@@ -1,7 +1,6 @@
 import csv
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
-import pickle
 import os
 import json
 from typing import List, Dict, Any, Tuple
@@ -15,7 +14,9 @@ from bs4 import BeautifulSoup
 import time
 import random
 from urllib.parse import unquote
-from insight_graphs import InsightGraphGenerator
+from insight_graphs import GroqInsightGraphGenerator
+from image_generator import ImageGenerator
+from performance_cache import PerformanceCache
 import ast
 
 @dataclass
@@ -34,6 +35,7 @@ class OptimizedSocialMediaRAG:
         self.chunks: List[SocialMediaChunk] = []
         self.embeddings_matrix: np.ndarray = None
         self.data_loaded = False
+        self.cache = PerformanceCache()  # Add performance cache
         
     def _parse_embedding(self, embedding_str: str) -> np.ndarray:
         """Parse embedding string from CSV into numpy array"""
@@ -110,38 +112,6 @@ class OptimizedSocialMediaRAG:
                 
                 # Extract keywords from external links to enhance searchability
                 link_keywords = ""
-                try:
-                    external_links_raw = row.get('external_links', '')
-                    if external_links_raw and external_links_raw != '[]':
-                        external_links = json.loads(external_links_raw)
-                        keywords = []
-                        for link_item in external_links:
-                            if isinstance(link_item, dict) and 'element' in link_item:
-                                url = link_item['element']
-                            else:
-                                url = str(link_item)
-                            
-                            # Extract meaningful keywords from URL
-                            import re
-                            # Look for key terms in URL paths
-                            url_lower = url.lower()
-                            key_terms = []
-                            if 'tariff' in url_lower:
-                                key_terms.append('tariffs')
-                            if 'trade' in url_lower:
-                                key_terms.append('trade')
-                            if 'trump' in url_lower:
-                                key_terms.append('trump')
-                            if 'business' in url_lower:
-                                key_terms.append('business')
-                            if 'economic' in url_lower or 'economy' in url_lower:
-                                key_terms.append('economy')
-                            keywords.extend(key_terms)
-                        
-                        if keywords:
-                            link_keywords = f" Related: {' '.join(set(keywords))}"
-                except:
-                    pass
                 
                 # Parse embedding
                 embedding_str = row.get('embeddings_vec', '') or row.get('embeddings', '')
@@ -756,44 +726,22 @@ class OnlineSearchAgent:
     def _get_synthetic_news(self, query: str, max_results: int = 3) -> List[Dict[str, str]]:
         """Generate synthetic news for demo purposes when real news can't be fetched"""
         synthetic_news = []
-        
-        # Current date for realistic timestamps
         current_date = datetime.now()
         
-        # News templates based on common query topics
-        news_templates = [
-            {
-                "source": "Reuters",
-                "domain": "reuters.com",
-                "template": "Latest developments in {topic}: Experts weigh in on recent changes",
-                "content": "Recent developments regarding {topic} have sparked debate among experts. According to several analysts interviewed by Reuters, the situation continues to evolve rapidly. \"We're seeing significant changes in how people view {topic},\" said Dr. Jane Smith, research director at the Global Policy Institute. Multiple factors are influencing public opinion, including economic considerations, social media discourse, and policy decisions."
-            },
-            {
-                "source": "BBC News",
-                "domain": "bbc.com",
-                "template": "Analysis: How {topic} is changing global conversations",
-                "content": "The BBC has been tracking developments related to {topic} over the past several months. Our analysis shows that public discourse has shifted significantly. Government officials and industry experts have noted that the impact of {topic} extends beyond immediate concerns to long-term policy implications. The public response has been mixed, with support coming primarily from urban centers while rural areas show more reserved attitudes according to recent surveys."
-            },
-            {
-                "source": "The New York Times",
-                "domain": "nytimes.com",
-                "template": "Public Opinion Shifts on {topic}, New Poll Suggests",
-                "content": "A recent national survey conducted by The New York Times shows changing attitudes toward {topic}. According to the poll, which sampled 1,500 adults across all demographics, perspectives are evolving rapidly. \"The data suggests we're seeing a fundamental shift in how people understand {topic},\" said polling director Mark Johnson. Factors influencing this change include recent media coverage, economic impacts, and evolving social norms. Experts suggest these trends may continue as more information becomes available."
-            }
-        ]
+        # Simplified news template
+        sources = ["Reuters", "BBC News", "Associated Press"]
+        domains = ["reuters.com", "bbc.com", "apnews.com"]
         
-        for i in range(min(max_results, len(news_templates))):
-            template = news_templates[i]
-            days_ago = random.randint(1, 7)  # Random recent date
+        for i in range(min(max_results, len(sources))):
+            days_ago = random.randint(1, 7)
             pub_date = (current_date - timedelta(days=days_ago)).strftime("%Y-%m-%d")
             
-            # Create the synthetic news article
             synthetic_news.append({
-                'title': template["template"].format(topic=query),
-                'url': f"https://www.{template['domain']}/articles/{query.replace(' ', '-').lower()}-analysis-{pub_date}",
-                'snippet': template["content"].format(topic=query),
+                'title': f"Latest developments in {query}: Analysis and expert insights",
+                'url': f"https://www.{domains[i]}/articles/{query.replace(' ', '-').lower()}-{pub_date}",
+                'snippet': f"Recent developments regarding {query} continue to evolve. Experts are analyzing the implications and public response to these changes.",
                 'type': 'news',
-                'publisher': template["source"],
+                'publisher': sources[i],
                 'publication_date': pub_date
             })
             
@@ -867,18 +815,13 @@ class OnlineSearchAgent:
             
             # Basic cleaning of date format
             if pub_date:
-                # Try to standardize date format
                 try:
-                    # Parse various date formats
-                    for fmt in ['%Y-%m-%d', '%Y/%m/%d', '%B %d, %Y', '%d %B %Y', '%m/%d/%Y']:
-                        try:
-                            parsed_date = datetime.strptime(pub_date[:10], fmt)
-                            pub_date = parsed_date.strftime('%Y-%m-%d')
-                            break
-                        except ValueError:
-                            continue
+                    # Try common date formats
+                    if len(pub_date) >= 10:
+                        parsed_date = datetime.strptime(pub_date[:10], '%Y-%m-%d')
+                        pub_date = parsed_date.strftime('%Y-%m-%d')
                 except Exception:
-                    # If parsing fails, keep the original format
+                    # Keep original format if parsing fails
                     pass
             
             return snippet, pub_date
@@ -886,26 +829,6 @@ class OnlineSearchAgent:
         except Exception as e:
             print(f"Error extracting article content: {e}")
             return "", ""
-            
-            text = ""
-            for selector in article_selectors:
-                element = soup.select_one(selector)
-                if element:
-                    text = element.get_text()
-                    break
-            
-            if not text:
-                text = soup.get_text()
-            
-            lines = (line.strip() for line in text.splitlines())
-            chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-            text = ' '.join(chunk for chunk in chunks if chunk)
-            
-            return text[:max_length] + "..." if len(text) > max_length else text
-            
-        except Exception as e:
-            print(f"Error extracting snippet from {url}: {e}")
-            return "Could not extract content."
 
 class OptimizedConversationalAgent:
     """Optimized conversational agent using precomputed embeddings"""
@@ -915,7 +838,8 @@ class OptimizedConversationalAgent:
         self.online_search = OnlineSearchAgent()
         self.query_encoder = None
         self.embedding_dimension = None
-        self.graph_generator = InsightGraphGenerator()
+        self.graph_generator = GroqInsightGraphGenerator()
+        self.image_generator = ImageGenerator()
         
         # Initialize conversation context
         self.conversation_history = []
@@ -925,7 +849,7 @@ class OptimizedConversationalAgent:
         if gemini_api_key:
             try:
                 genai.configure(api_key=gemini_api_key)
-                self.model = genai.GenerativeModel('gemini-1.5-flash')
+                self.model = genai.GenerativeModel('gemini-2.5-flash')
                 print("✅ Gemini AI configured")
             except Exception as e:
                 print(f"⚠️ Could not configure Gemini: {e}")
@@ -1009,7 +933,9 @@ class OptimizedConversationalAgent:
         self.conversation_history = []
         
     def chat(self, user_query: str, platform_filter: str = None, top_k: int = 5, use_online: bool = True) -> Dict[str, Any]:
-        """Enhanced chat interaction with optimized RAG"""
+        """Enhanced chat interaction with optimized RAG and performance caching"""
+        
+        start_time = time.time()
         
         # Initialize query encoder if not done yet
         if not self.query_encoder:
@@ -1023,60 +949,92 @@ class OptimizedConversationalAgent:
                     "num_social_results": 0,
                     "num_news_results": 0
                 }
-        
+
         try:
-            # 1. Enhance query using Gemini for better RAG retrieval
-            enhanced_query = self.rag.enhance_query_with_gemini(user_query, self.model)
+            print(f"⚡ Starting optimized chat for query: {user_query}")
             
-            # 2. Encode the enhanced query for RAG search
-            enhanced_query_embedding = self.query_encoder.encode([enhanced_query])[0]
-            print(f"🔍 Enhanced query embedding shape: {enhanced_query_embedding.shape}")
+            # 1. Check cache for query embedding first
+            query_for_cache = f"{user_query}_{platform_filter or 'all'}"
+            cached_embedding = self.rag.cache.get_embedding_cache(query_for_cache)
             
-            # 3. Search RAG system using enhanced query (get more results initially)
-            initial_results = self.rag.search(
-                enhanced_query_embedding, top_k=top_k*2, platform_filter=platform_filter
-            )
+            if cached_embedding is not None:
+                print("⚡ Using cached embedding")
+                enhanced_query_embedding = cached_embedding
+                enhanced_query = user_query  # Skip enhancement for cached queries
+            else:
+                # Enhance query using Gemini for better RAG retrieval
+                enhanced_query = self.rag.enhance_query_with_gemini(user_query, self.model)
+                enhanced_query_embedding = self.query_encoder.encode([enhanced_query])[0]
+                # Cache the embedding
+                self.rag.cache.set_embedding_cache(query_for_cache, enhanced_query_embedding)
             
-            # 4. Filter results for relevance to original query
-            rag_results = self.rag.filter_relevant_results(
-                initial_results, user_query, self.query_encoder, relevance_threshold=0.10
-            )
+            # 2. Check cache for RAG results
+            rag_params = {"top_k": top_k, "platform_filter": platform_filter}
+            cached_rag_results = self.rag.cache.get_rag_results_cache(user_query, rag_params)
             
-            # 5. Limit to requested number of results
-            rag_results = rag_results[:top_k]
+            if cached_rag_results is not None:
+                print("⚡ Using cached RAG results")
+                rag_results = cached_rag_results
+            else:
+                # Search RAG system using enhanced query
+                initial_results = self.rag.search(
+                    enhanced_query_embedding, top_k=top_k*2, platform_filter=platform_filter
+                )
+                
+                # Filter results for relevance to original query
+                rag_results = self.rag.filter_relevant_results(
+                    initial_results, user_query, self.query_encoder, relevance_threshold=0.10
+                )[:top_k]
+                
+                # Cache the results
+                self.rag.cache.set_rag_results_cache(user_query, rag_params, rag_results)
             
             rag_context = self.rag.generate_context(rag_results) if rag_results else ""
             
-            # 6. Generate insight-driven graphs
+            # 3. Check cache for news results (only if online search is enabled)
+            online_results = []
+            if use_online:
+                cached_news = self.rag.cache.get_news_cache(user_query)
+                if cached_news is not None:
+                    print("⚡ Using cached news results")
+                    online_results = cached_news
+                else:
+                    try:
+                        print("🔍 Searching for news sources...")
+                        online_results = self.online_search.search_news(user_query, max_results=3)
+                        # Cache the news results
+                        self.rag.cache.set_news_cache(user_query, online_results)
+                    except Exception as e:
+                        print(f"⚠️ Online search failed: {e}")
+                        online_results = self.online_search._get_synthetic_news(user_query, max_results=2)
+            
+            # 4. Generate images/graphs (skip for similar recent queries to save time)
+            generated_image = None
             graphs = []
+            
             try:
-                if len(rag_results) >= 3:  # Only generate graphs if we have sufficient data
-                    print("📊 Generating insight-driven graphs...")
+                # Only generate images for person/visual queries
+                query_lower = user_query.lower()
+                visual_keywords = ['who is', 'picture', 'image', 'photo', 'looks like', 'appearance']
+                if any(keyword in query_lower for keyword in visual_keywords):
+                    print("�️ Generating image for visual query...")
+                    generated_image = self.image_generator.generate_image_for_query(user_query, self.model)
+                    if generated_image:
+                        print(f"✅ Generated image: {generated_image['search_term']}")
+                
+                # Only generate graphs if we have enough data and it's explicitly requested
+                graph_keywords = ['chart', 'graph', 'analysis', 'trend', 'comparison', 'data', 'statistics']
+                if len(rag_results) >= 5 and any(keyword in query_lower for keyword in graph_keywords):
+                    print("� Generating graphs for data query...")
                     graphs = self.graph_generator.generate_insights_for_query(
                         user_query, rag_results, self.model
                     )
                     print(f"✅ Generated {len(graphs)} insight graphs")
+                        
             except Exception as e:
-                print(f"⚠️ Error generating graphs: {e}")
+                print(f"⚠️ Error with image/graph generation: {e}")
+                generated_image = None
                 graphs = []
-            
-            # 7. Search online sources using original query - ALWAYS include news sources  
-            online_results = []
-            try:
-                print("🔍 Searching for news sources...")
-                online_results = self.online_search.search_news(user_query, max_results=3)
-                print(f"✅ Found {len(online_results)} news sources")
-            except Exception as e:
-                print(f"⚠️ Online search failed: {e}")
-                online_results = []
-            
-            # Always include news sources - use synthetic data as fallback
-            if not online_results:
-                print("⚠️ No news sources found, using synthetic news as fallback")
-                online_results = self.online_search._get_synthetic_news(user_query, max_results=2)
-                print(f"✅ Created {len(online_results)} synthetic news sources")
-                print("📰 Using synthetic news sources as fallback")
-                online_results = self.online_search._get_synthetic_news(user_query, max_results=2)
             
             # 4. Create comprehensive context
             context_parts = []
@@ -1099,7 +1057,7 @@ class OptimizedConversationalAgent:
             conversation_context = self.get_conversation_context()
             
             enhanced_prompt = f"""
-You are an intelligent politics assistant that provides comprehensive, balanced answers by analyzing both social media discussions and current news sources. You maintain conversation context to provide coherent, contextual responses.
+You are an intelligent journalist assistant that provides comprehensive, balanced answers by analyzing both social media discussions and current news sources. You maintain conversation context to provide coherent, contextual responses.
 
 IMPORTANT GUIDELINES:
 1. ALWAYS prioritize information from NEWS SOURCES over social media
@@ -1108,6 +1066,9 @@ IMPORTANT GUIDELINES:
 4. Use news sources as primary evidence for your claims
 5. When available, reference publication dates from news sources
 6. Provide nuanced analysis that considers multiple perspectives
+7. If no relevant information is found, use online sources to supplement your answer.
+8. Do not mention the enhanced search terms or the retrieval process in your response.
+9. Do not complain your reasoning process; just provide the answer.
 
 {conversation_context}
 
@@ -1116,22 +1077,10 @@ CURRENT USER QUESTION: {user_query}
 AVAILABLE CONTEXT:
 {full_context}
 
-INSTRUCTIONS:
-1. CONVERSATION HISTORY: Use the complete conversation history to understand context and follow-up questions
-2. DIRECT ANSWERS: Directly address the CURRENT USER QUESTION above
-3. CONTINUITY: Maintain coherent narrative between questions - reference previous information when relevant
-4. BALANCED PERSPECTIVE: Always incorporate BOTH social media insights AND news sources in your response
-5. NEWS PRIORITY: Explicitly cite news sources and their findings in your response
-6. FACTS FIRST: Lead with factual information from news sources, then add social media sentiment
-7. CLEAR ATTRIBUTION: Clearly indicate when information comes from news versus social media
-8. OBJECTIVITY: Present multiple perspectives when available
-7. CITATIONS: Cite specific sources when making claims
-8. OBJECTIVITY: Be objective and acknowledge different viewpoints
-9. FOLLOW-UPS: For follow-up questions, explicitly reference previous context
-
 Note: The context above was retrieved using enhanced search terms, but your response should directly address the original user question.
 
 Please provide a comprehensive response that addresses the user's question using both social media insights and current information, while maintaining conversation continuity.
+dont just list facts, synthesize them into a coherent answer.
 
 I want you return the result in the form of a paragraph. Don't include your opinions on the data provided. Use it if it is relevant to the user's question.
 """
@@ -1148,10 +1097,7 @@ I want you return the result in the form of a paragraph. Don't include your opin
                 print(f"⚠️ Error with Gemini API: {e}")
                 ai_response = self._generate_fallback_response(user_query, rag_context, online_results)
             
-            # 7. Update conversation history
-            self.add_to_conversation_history(user_query, ai_response)
-            
-            # 8. Prepare response data
+            # 7. Create enhanced sources list
             sources = []
             
             for chunk, score in rag_results:
@@ -1203,9 +1149,16 @@ I want you return the result in the form of a paragraph. Don't include your opin
                 "rag_context": rag_context,
                 "online_sources": online_results,
                 "graphs": graphs,
+                "generated_image": generated_image,
                 "num_social_results": len(rag_results),
                 "num_news_results": len(online_results),
-                "num_graphs": len(graphs)
+                "num_graphs": len(graphs),
+                "processing_time": round(time.time() - start_time, 2),
+                "cached_operations": {
+                    "embedding": cached_embedding is not None,
+                    "rag_results": cached_rag_results is not None,
+                    "news": cached_news is not None if use_online else False
+                }
             }
             
         except Exception as e:
@@ -1285,7 +1238,7 @@ def initialize_optimized_rag_system():
         print("🤖 Initializing optimized conversational agent...")
         optimized_agent = OptimizedConversationalAgent(
             optimized_rag_system, 
-            gemini_api_key="Your api key here"  # Replace with your actual Gemini API key
+            gemini_api_key=os.getenv("GEMINI_API_KEY")  # Use environment variable for security
         )
         
         # Initialize the query encoder now that we have the data loaded
@@ -1419,6 +1372,41 @@ def get_conversation_history():
         return jsonify({
             "conversation_history": optimized_agent.conversation_history,
             "history_length": len(optimized_agent.conversation_history)
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/performance/cache', methods=['GET'])
+def get_cache_stats():
+    """Get performance cache statistics"""
+    if optimized_rag_system is None:
+        return jsonify({"error": "Optimized RAG system not initialized"}), 400
+    
+    try:
+        stats = optimized_rag_system.cache.get_stats()
+        return jsonify({
+            "cache_stats": stats,
+            "status": "active"
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/performance/cache/clear', methods=['POST'])
+def clear_cache():
+    """Clear performance cache"""
+    if optimized_rag_system is None:
+        return jsonify({"error": "Optimized RAG system not initialized"}), 400
+    
+    try:
+        old_stats = optimized_rag_system.cache.get_stats()
+        optimized_rag_system.cache.clear_expired()
+        optimized_rag_system.cache.memory_cache.clear()
+        new_stats = optimized_rag_system.cache.get_stats()
+        
+        return jsonify({
+            "message": "Cache cleared successfully",
+            "old_stats": old_stats,
+            "new_stats": new_stats
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
