@@ -1,10 +1,10 @@
-# Simppl Journalism Media Analysis Platform
+# MediaMeld Journalism Media Analysis Platform
 
-This guide will help you run all components of the Simppl platform.
+This guide will help you run all components of the MediaMeld platform.
 
 ## Project Purpose and Overview
 
-Simppl is a specialized tool designed for journalists and media analysts to gain comprehensive insights across both traditional news sources and social media platforms. Using AI-powered analysis, it allows users to:
+MediaMeld is a specialized tool designed for journalists and media analysts to gain comprehensive insights across both traditional news sources and social media platforms. Using AI-powered analysis, it allows users to:
 
 1. **Cross-platform media analysis**: Compare how stories are covered in professional journalism versus social media discussions
 2. **Detect emerging narratives**: Identify trending topics and audience sentiment across different platforms
@@ -15,7 +15,7 @@ The platform leverages Retrieval-Augmented Generation (RAG) technology to provid
 
 ### System Architecture
 
-Simppl consists of two main components:
+MediaMeld consists of two main components:
 
 1. **Python Backend (RAG Service)** – Loads, embeds, and retrieves data from CSV files
 2. **Vanilla JavaScript Frontend** – User interface for journalistic analysis and PDF export
@@ -50,7 +50,7 @@ This will start the backend service (by default on http://localhost:5000).
 ### 4. Open the Frontend
 
 1. Open `frontend/index.html` in your web browser (double-click or use a local server if needed).
-2. The interface allows you to:
+2. The MediaMeld interface allows you to:
    - Ask questions about social media and news data
    - View sources and data insights
    - Export research-style PDF reports
@@ -87,7 +87,7 @@ You may use your own CSVs, but they should match the expected format for the bac
 
 4. **Source Attribution**: All information is presented with proper citation, including direct links to the original content where available.
 
-5. **PDF Generation**: The system can produce research-quality PDF documents with proper academic formatting, including:
+5. **PDF Generation**: MediaMeld can produce research-quality PDF documents with proper academic formatting, including:
    - Title page
    - Abstract
    - Introduction
