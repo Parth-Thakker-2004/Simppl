@@ -1285,7 +1285,7 @@ def initialize_optimized_rag_system():
         print("🤖 Initializing optimized conversational agent...")
         optimized_agent = OptimizedConversationalAgent(
             optimized_rag_system, 
-            gemini_api_key="AIzaSyCvWysEM6_RGTf3jPtlZLEAMPbaZjUBjwY"
+            gemini_api_key="Your api key here"  # Replace with your actual Gemini API key
         )
         
         # Initialize the query encoder now that we have the data loaded
