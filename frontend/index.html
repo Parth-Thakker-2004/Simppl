@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Journalism Media Assistant</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <!-- jsPDF for PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+<body>
+    <div class="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1 class="app-title">Journalism Media Assistant</h1>
+                <div class="header-controls">
+                    <button class="theme-toggle" id="themeToggle">
+                        <span class="theme-icon">🌙</span>
+                    </button>
+                    <button class="settings-btn" id="settingsBtn">
+                        <span class="settings-icon">⚙️</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Settings Panel -->
+        <div class="settings-panel" id="settingsPanel">
+            <div class="settings-content">
+                <h3>Settings</h3>
+                <div class="setting-group">
+                    <label for="platformFilter">Platform Filter:</label>
+                    <select id="platformFilter">
+                        <option value="">All Platforms</option>
+                        <option value="Reddit">Reddit Only</option>
+                        <option value="YouTube">YouTube Only</option>
+                    </select>
+                </div>
+                <div class="setting-group">
+                    <label for="useOnline">Include Online Sources:</label>
+                    <input type="checkbox" id="useOnline" checked>
+                </div>
+                <div class="setting-group">
+                    <label for="topK">Results Count:</label>
+                    <input type="range" id="topK" min="1" max="10" value="5">
+                    <span id="topKValue">5</span>
+                </div>
+                <div class="setting-group">
+                    <button id="clearConversationBtn" class="clear-conversation-btn">Clear Conversation</button>
+                </div>
+                <div class="setting-group">
+                    <button id="exportPdfBtn" class="export-pdf-btn">Export as Research Paper</button>
+                </div>
+                <button class="close-settings" onclick="toggleSettings()">Close</button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <main class="main">
+            <!-- Chat Container -->
+            <div class="chat-container" id="chatContainer">
+                <!-- Welcome Message -->
+                <div class="welcome-message" id="welcomeMessage">
+                    <div class="welcome-content">
+                        <h2>Welcome to Social Media Journalism Assistant</h2>
+                        <p>Ask me about news coverage, media trends, or reporting on current events. I'll analyze news articles alongside social media discussions to provide journalistic insights.</p>
+                        <div class="example-queries">
+                            <h3>Try asking:</h3>
+                            <div class="example-item" onclick="sendExample(this)">
+                                "How are media outlets covering the latest tech innovations?"
+                            </div>
+                            <div class="example-item" onclick="sendExample(this)">
+                                "Compare news coverage vs social discussion on climate reporting"
+                            </div>
+                            <div class="example-item" onclick="sendExample(this)">
+                                "What's the public response to recent financial news coverage?"
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Messages will be inserted here -->
+            </div>
+
+            <!-- Input Area -->
+            <div class="input-container">
+                <div class="input-wrapper">
+                    <textarea 
+                        id="messageInput" 
+                        placeholder="Ask about news coverage, media reporting, or journalistic trends..."
+                        rows="1"
+                    ></textarea>
+                    <button id="sendButton" class="send-button" disabled>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                            <polygon points="22,2 15,22 11,13 2,9"></polygon>
+                        </svg>
+                    </button>
+                </div>
+                <!-- Context Indicator -->
+                <div class="context-indicator" id="contextIndicator">
+                    <span class="context-icon">🔄</span> Using conversation context
+                </div>
+                <div class="input-footer">
+                    <span class="powered-by">Powered by Journalism RAG + Gemini AI</span>
+                </div>
+            </div>
+        </main>
+
+        <!-- Loading Overlay -->
+        <div class="loading-overlay" id="loadingOverlay">
+            <div class="loading-content">
+                <div class="loading-spinner"></div>
+                <p>Initializing RAG system...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
