@@ -64,15 +64,15 @@ class OptimizedSocialMediaRAG:
         except json.JSONDecodeError:
             # Only print warning for truly unexpected formats, not empty arrays
             if embedding_str != '[]' and embedding_str != '':
-                print(f"⚠️ JSON decode error for embedding: {embedding_str[:50]}...")
+                print(f"JSON decode error for embedding: {embedding_str[:50]}...")
             return np.array([])
         except (ValueError, SyntaxError):
             # Only print warning for truly unexpected formats
             if embedding_str != '[]' and embedding_str != '':
-                print(f"⚠️ Parse error for embedding: {embedding_str[:50]}...")
+                print(f"Parse error for embedding: {embedding_str[:50]}...")
             return np.array([])
         except Exception as e:
-            print(f"⚠️ Unexpected error parsing embedding: {e}")
+            print(f"Unexpected error parsing embedding: {e}")
             return np.array([])
     
     def load_reddit_data_with_embeddings(self, csv_path: str = None):
@@ -633,7 +633,6 @@ Enhanced search query:"""
             print(f"⚠️ Error in relevance filtering: {e}")
             return results  # Return original results if filtering fails
 
-# Keep the existing OnlineSearchAgent and ConversationalAgent classes
 class OnlineSearchAgent:
     """Agent to fetch information from online sources"""
     
@@ -651,7 +650,8 @@ class OnlineSearchAgent:
                 "reuters.com", "bbc.com", "cnn.com", "apnews.com", "nytimes.com", 
                 "theguardian.com", "washingtonpost.com", "bloomberg.com", "ft.com",
                 "wsj.com", "economist.com", "npr.org", "cbsnews.com", "nbcnews.com",
-                "abcnews.go.com", "aljazeera.com", "time.com", "forbes.com", "cnbc.com"
+                "abcnews.go.com", "aljazeera.com", "time.com", "forbes.com", "cnbc.com",
+                "thehindu.com", "indianexpress.com", "ndtv.com", "timesofindia.indiatimes.com"
             ]
             
             # Create a site-specific search query
@@ -711,41 +711,12 @@ class OnlineSearchAgent:
                     continue
                 
                 time.sleep(0.3)  # Gentle throttling
-                
-            # If we couldn't get real news, create some synthetic news for demo purposes
-            if not results:
-                print("⚠️ Falling back to synthetic news data for demo")
-                results = self._get_synthetic_news(query, max_results)
             
             return results
             
         except Exception as e:
             print(f"Error searching news: {e}")
             return self._get_synthetic_news(query, max_results)
-            
-    def _get_synthetic_news(self, query: str, max_results: int = 3) -> List[Dict[str, str]]:
-        """Generate synthetic news for demo purposes when real news can't be fetched"""
-        synthetic_news = []
-        current_date = datetime.now()
-        
-        # Simplified news template
-        sources = ["Reuters", "BBC News", "Associated Press"]
-        domains = ["reuters.com", "bbc.com", "apnews.com"]
-        
-        for i in range(min(max_results, len(sources))):
-            days_ago = random.randint(1, 7)
-            pub_date = (current_date - timedelta(days=days_ago)).strftime("%Y-%m-%d")
-            
-            synthetic_news.append({
-                'title': f"Latest developments in {query}: Analysis and expert insights",
-                'url': f"https://www.{domains[i]}/articles/{query.replace(' ', '-').lower()}-{pub_date}",
-                'snippet': f"Recent developments regarding {query} continue to evolve. Experts are analyzing the implications and public response to these changes.",
-                'type': 'news',
-                'publisher': sources[i],
-                'publication_date': pub_date
-            })
-            
-        return synthetic_news
     
     def _extract_article_snippet_and_date(self, url: str, max_length: int = 300) -> Tuple[str, str]:
         """Extract a snippet and publication date from a news article"""
@@ -1057,7 +1028,7 @@ class OptimizedConversationalAgent:
             conversation_context = self.get_conversation_context()
             
             enhanced_prompt = f"""
-You are an intelligent journalist assistant that provides comprehensive, balanced answers by analyzing both social media discussions and current news sources. You maintain conversation context to provide coherent, contextual responses.
+You are an intelligent politics assistant that provides comprehensive, balanced answers by analyzing both social media discussions and current news sources. You maintain conversation context to provide coherent, contextual responses.
 
 IMPORTANT GUIDELINES:
 1. ALWAYS prioritize information from NEWS SOURCES over social media
@@ -1066,9 +1037,6 @@ IMPORTANT GUIDELINES:
 4. Use news sources as primary evidence for your claims
 5. When available, reference publication dates from news sources
 6. Provide nuanced analysis that considers multiple perspectives
-7. If no relevant information is found, use online sources to supplement your answer.
-8. Do not mention the enhanced search terms or the retrieval process in your response.
-9. Do not complain your reasoning process; just provide the answer.
 
 {conversation_context}
 
@@ -1077,10 +1045,22 @@ CURRENT USER QUESTION: {user_query}
 AVAILABLE CONTEXT:
 {full_context}
 
+INSTRUCTIONS:
+1. CONVERSATION HISTORY: Use the complete conversation history to understand context and follow-up questions
+2. DIRECT ANSWERS: Directly address the CURRENT USER QUESTION above
+3. CONTINUITY: Maintain coherent narrative between questions - reference previous information when relevant
+4. BALANCED PERSPECTIVE: Always incorporate BOTH social media insights AND news sources in your response
+5. NEWS PRIORITY: Explicitly cite news sources and their findings in your response
+6. FACTS FIRST: Lead with factual information from news sources, then add social media sentiment
+7. CLEAR ATTRIBUTION: Clearly indicate when information comes from news versus social media
+8. OBJECTIVITY: Present multiple perspectives when available
+7. CITATIONS: Cite specific sources when making claims
+8. OBJECTIVITY: Be objective and acknowledge different viewpoints
+9. FOLLOW-UPS: For follow-up questions, explicitly reference previous context
+
 Note: The context above was retrieved using enhanced search terms, but your response should directly address the original user question.
 
 Please provide a comprehensive response that addresses the user's question using both social media insights and current information, while maintaining conversation continuity.
-dont just list facts, synthesize them into a coherent answer.
 
 I want you return the result in the form of a paragraph. Don't include your opinions on the data provided. Use it if it is relevant to the user's question.
 """

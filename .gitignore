@@ -1,3 +1,5 @@
 # Ignore data files
 /data/
 /.venv/
+/
+.env
