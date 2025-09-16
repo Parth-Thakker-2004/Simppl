@@ -34,9 +34,15 @@ MediaMeld consists of two main components:
 ### 2. Install Python Dependencies
 
 ```bash
-cd backend
-pip install flask sentence-transformers pandas numpy torch
+pip install -r requirements.txt
 ```
+
+This will install all required dependencies including:
+- Flask and Flask-CORS for the web framework
+- NumPy, Pandas, and Scikit-learn for data processing
+- Matplotlib and Seaborn for visualization
+- Google Generative AI and Groq for AI capabilities
+- Requests and BeautifulSoup for web scraping
 
 ### 3. Start the Python Backend
 
