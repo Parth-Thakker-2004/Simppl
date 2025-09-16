@@ -995,7 +995,7 @@ class OptimizedConversationalAgent:
                 
                 # Only generate graphs if we have enough data and it's explicitly requested
                 graph_keywords = ['chart', 'graph', 'analysis', 'trend', 'comparison', 'data', 'statistics']
-                if len(rag_results) >= 5 and any(keyword in query_lower for keyword in graph_keywords):
+                if any(keyword in query_lower for keyword in graph_keywords):
                     print("� Generating graphs for data query...")
                     graphs = self.graph_generator.generate_insights_for_query(
                         user_query, rag_results, self.model
