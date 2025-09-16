@@ -1,0 +1,25 @@
+# Core web framework
+flask>=3.0.0
+flask-cors>=4.0.0
+
+# Data processing and analysis
+numpy>=1.24.0
+pandas>=2.0.0
+scikit-learn>=1.3.0
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# AI/ML APIs
+google-generativeai>=0.3.0
+groq>=0.5.0
+
+# Web scraping and HTTP
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+
+# Standard library imports (included with Python)
+# csv, os, json, time, random, ast, pickle, hashlib
+# datetime, typing, dataclasses, collections, re
+# urllib.parse, io, base64
