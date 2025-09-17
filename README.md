@@ -111,6 +111,14 @@ You may use your own CSVs, but they should match the expected format for the bac
 - **Content Creation**: Develop well-sourced articles based on cross-platform analysis
 - **Trend Monitoring**: Identify emerging topics and public sentiment
 
+## 🔮 Future Scope & Enhancements
+
+### Advanced Query Capabilities with LangChain & LangGraph
+- **SQL Query Generation**: Integrate LangChain and LangGraph to automatically generate SQL queries for deeper data analysis
+- **User Contribution Analysis**: Implement functionality to identify users who have contributed the most content towards specific topics
+- **Dynamic Query Chains**: Use LangGraph for complex multi-step analysis workflows
+
+
 ### Why This Matters
 
 This tool bridges the gap between traditional journalism and social media discourse, providing a comprehensive view of information ecosystems that is increasingly crucial in today's fragmented media landscape. By combining automated analysis with proper source attribution, it helps maintain journalistic integrity while expanding the scope of research beyond what would be manually feasible.
