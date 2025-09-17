@@ -38,9 +38,8 @@ class GroqInsightGraphGenerator:
         if groq_api_key:
             try:
                 self.groq_client = Groq(api_key=groq_api_key)
-                print("✅ Groq client initialized for graph analysis")
             except Exception as e:
-                print(f"⚠️ Groq initialization failed: {e}")
+                print(f"Groq initialization failed: {e}")
     
     def generate_insights_for_query(self, query: str, rag_results: List[Tuple], gemini_model=None) -> List[Dict[str, Any]]:
         """Generate graphs using Groq for intelligent decisions"""
@@ -52,7 +51,6 @@ class GroqInsightGraphGenerator:
         data = self._extract_data_from_results(rag_results)
         
         if not data or len(data) < 3:
-            print("📊 Insufficient data for meaningful graph generation")
             return []
         
         # Use Groq to analyze query and determine graph needs
@@ -60,14 +58,12 @@ class GroqInsightGraphGenerator:
         groq_analysis = self._analyze_query_with_groq(query, data)
         
         if not groq_analysis.get("needs_graph"):
-            print(f"🚫 Groq determined no graph needed for: {query}")
             return []
         
         # Generate graph based on Groq's analysis
         graph_result = self._generate_graph_from_groq_analysis(groq_analysis, data, query)
         
         if graph_result:
-            print(f"📊 Generated {groq_analysis['graph_type']} graph for query: {query}")
             return [graph_result]
         
         return []
@@ -146,14 +142,13 @@ Respond only with valid JSON:
             
             try:
                 result = json.loads(response_text)
-                print(f"🚀 Groq graph analysis: {result}")
+                print(f"Groq graph analysis: {result}")
                 return result
             except json.JSONDecodeError:
-                print(f"⚠️ JSON parsing failed, response: {response_text}")
+                print(f"JSON parsing failed, response: {response_text}")
                 return {"needs_graph": False}
                 
         except Exception as e:
-            print(f"⚠️ Groq graph analysis failed: {e}")
             return {"needs_graph": False}
     
     def _clean_json_response(self, response_text: str) -> str:
@@ -232,7 +227,7 @@ Respond only with valid JSON:
         elif graph_type == "heatmap":
             return self._create_heatmap(analysis, data, query)
         else:
-            print(f"⚠️ Unknown graph type: {graph_type}")
+            print(f"Unknown graph type: {graph_type}")
             return None
     
     def _create_line_chart(self, analysis: Dict[str, Any], data: List[Dict], query: str) -> Dict[str, Any]:

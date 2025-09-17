@@ -13,9 +13,9 @@ class ImageGenerator:
         if groq_api_key:
             try:
                 self.groq_client = Groq(api_key=groq_api_key)
-                print("✅ Groq client initialized for fast AI decisions")
+                print("Groq client initialized")
             except Exception as e:
-                print(f"⚠️ Groq initialization failed: {e}")
+                print(f"Groq initialization failed: {e}")
     
     def analyze_query_with_groq(self, query: str) -> Dict[str, Any]:
         """Use Groq to determine if image is needed, answer question, and get search terms"""
@@ -66,14 +66,13 @@ Respond only with valid JSON:
             response_text = response.choices[0].message.content.strip()
             try:
                 result = json.loads(response_text)
-                print(f"🚀 Groq analysis: {result}")
                 return result
             except json.JSONDecodeError:
-                print(f"⚠️ JSON parsing failed, response: {response_text}")
+                print(f"JSON parsing failed, response: {response_text}")
                 return {"needs_image": False, "answer": None, "search_term": None, "image_type": None}
                 
         except Exception as e:
-            print(f"⚠️ Groq analysis failed: {e}")
+            print(f"Groq analysis failed: {e}")
             return {"needs_image": False, "answer": None, "search_term": None, "image_type": None}
     
     def should_generate_graph_with_groq(self, query: str, num_results: int) -> bool:
@@ -106,11 +105,10 @@ Respond with only YES or NO:
             response_text = response.choices[0].message.content.strip().upper()
             should_generate = response_text.startswith("YES")
             
-            print(f"🚀 Groq graph decision for '{query}': {should_generate}")
             return should_generate
                 
         except Exception as e:
-            print(f"⚠️ Groq graph decision failed: {e}")
+            print(f"Groq graph decision failed: {e}")
             return False
     
     # Removed - now handled by Groq in analyze_query_with_groq
@@ -120,12 +118,9 @@ Respond with only YES or NO:
     def search_image(self, search_term: str, image_type: str = "general") -> Optional[Dict[str, Any]]:
         """Search for relevant images using free APIs with streamlined approach"""
         
-        print(f"🔍 Searching for image: '{search_term}' (type: {image_type})")
-        
         # Try Wikipedia first (most reliable for people/places)
         result = self._search_wikimedia(search_term)
         if result:
-            print(f"✅ Found Wikipedia image for: {search_term}")
             return result
         
         # For people, avoid random images - try name variations only
@@ -135,7 +130,6 @@ Respond with only YES or NO:
                 if variation != search_term:
                     result = self._search_wikimedia(variation)
                     if result:
-                        print(f"✅ Found Wikipedia image with variation: {variation}")
                         return result
         
         # Final fallback to enhanced placeholder
@@ -156,7 +150,6 @@ Respond with only YES or NO:
             if response.status_code == 200:
                 data = response.json()
                 if "originalimage" in data:
-                    print(f"✅ Found Wikipedia image for: {search_term}")
                     return {
                         "url": data["originalimage"]["source"],
                         "thumbnail": data.get("thumbnail", {}).get("source", data["originalimage"]["source"]),
@@ -165,11 +158,11 @@ Respond with only YES or NO:
                         "source": "Wikipedia"
                     }
                 else:
-                    print(f"📷 No image found in Wikipedia for: {search_term}")
+                    print(f"No image found in Wikipedia for: {search_term}")
             else:
-                print(f"⚠️ Wikipedia API returned status {response.status_code} for: {search_term}")
+                print(f"Wikipedia API returned status {response.status_code} for: {search_term}")
         except Exception as e:
-            print(f"⚠️ Wikimedia search failed: {e}")
+            print(f" Wikimedia search failed: {e}")
         
         return None
     
@@ -208,14 +201,12 @@ Respond with only YES or NO:
         
         # Use Groq for all analysis - single API call
         if self.groq_client:
-            print("🚀 Using Groq for intelligent image analysis...")
             groq_analysis = self.analyze_query_with_groq(query)
             
             if groq_analysis["needs_image"] and groq_analysis["search_term"]:
                 search_term = groq_analysis["search_term"]
                 image_type = groq_analysis["image_type"] or "general"
                 
-                print(f"🎯 Groq decision: Image needed for '{search_term}' (type: {image_type})")
                 
                 # Single streamlined image search
                 image_result = self.search_image(search_term, image_type)
@@ -224,12 +215,9 @@ Respond with only YES or NO:
                     image_result["search_term"] = search_term
                     image_result["image_type"] = image_type
                     image_result["groq_answer"] = groq_analysis.get("answer", "")
-                    print(f"🖼️ Generated image for query: {query} -> {search_term}")
                     return image_result
             else:
-                print(f"🚫 Groq determined no image needed for: {query}")
                 return None
         
         # No fallback needed - Groq handles everything
-        print("⚠️ Groq not available, no image generated")
         return None

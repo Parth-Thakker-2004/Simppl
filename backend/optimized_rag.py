@@ -82,7 +82,6 @@ class OptimizedSocialMediaRAG:
             posts_path = os.path.join(data_folder, "posts Data Dump - Reddit.csv")
             comments_path = os.path.join(data_folder, "comments Data Dump - Reddit.csv")
         
-        print("🚀 Loading Reddit posts with precomputed embeddings...")
         
         # Load posts
         posts_count = 0
@@ -140,14 +139,8 @@ class OptimizedSocialMediaRAG:
                 
                 self.chunks.append(chunk)
                 posts_count += 1
-                
-                if posts_count % 1000 == 0:
-                    print(f"   📊 Loaded {posts_count} posts...")
         
-        print(f"✅ Loaded {posts_count} Reddit posts with embeddings")
         
-        # Load comments
-        print("🚀 Loading Reddit comments with precomputed embeddings...")
         comments_count = 0
         
         with open(comments_path, 'r', encoding='utf-8', newline='') as f:
@@ -182,10 +175,7 @@ class OptimizedSocialMediaRAG:
                 self.chunks.append(chunk)
                 comments_count += 1
                 
-                if comments_count % 5000 == 0:
-                    print(f"   📊 Loaded {comments_count} comments...")
         
-        print(f"✅ Loaded {comments_count} Reddit comments with embeddings")
         
     def load_youtube_data_with_embeddings(self, csv_path: str = None):
         """Load YouTube data directly from CSV with precomputed embeddings"""
@@ -193,8 +183,6 @@ class OptimizedSocialMediaRAG:
             data_folder = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
             posts_path = os.path.join(data_folder, "posts Data Dump - Youtube.csv")
             comments_path = os.path.join(data_folder, "comments Data Dump - Youtube.csv")
-        
-        print("🚀 Loading YouTube posts with precomputed embeddings...")
         
         # Load posts
         posts_count = 0
@@ -242,13 +230,8 @@ class OptimizedSocialMediaRAG:
                 self.chunks.append(chunk)
                 posts_count += 1
                 
-                if posts_count % 1000 == 0:
-                    print(f"   📊 Loaded {posts_count} posts...")
         
-        print(f"✅ Loaded {posts_count} YouTube posts with embeddings")
         
-        # Load comments
-        print("🚀 Loading YouTube comments with precomputed embeddings...")
         comments_count = 0
         
         with open(comments_path, 'r', encoding='utf-8', newline='') as f:
@@ -283,23 +266,18 @@ class OptimizedSocialMediaRAG:
                 self.chunks.append(chunk)
                 comments_count += 1
                 
-                if comments_count % 5000 == 0:
-                    print(f"   📊 Loaded {comments_count} comments...")
         
-        print(f"✅ Loaded {comments_count} YouTube comments with embeddings")
     
     def build_embeddings_matrix(self):
         """Build the embeddings matrix for fast similarity search"""
         if not self.chunks:
             raise ValueError("No data loaded. Call load_*_data_with_embeddings first.")
         
-        print(f"🔧 Building embeddings matrix from {len(self.chunks)} chunks...")
         
         # Stack all embeddings into a matrix
         embeddings_list = [chunk.embedding for chunk in self.chunks]
         self.embeddings_matrix = np.vstack(embeddings_list)
         
-        print(f"✅ Built embeddings matrix: {self.embeddings_matrix.shape}")
         self.data_loaded = True
         
         # Save the processed data for future fast loading
@@ -328,10 +306,9 @@ class OptimizedSocialMediaRAG:
             with open(chunks_path, 'w', encoding='utf-8') as f:
                 json.dump(chunks_data, f, ensure_ascii=False, indent=2)
             
-            print(f"💾 Saved optimized data to {embeddings_path} and {chunks_path}")
             
         except Exception as e:
-            print(f"⚠️ Could not save processed data: {e}")
+            print(f"Could not save processed data: {e}")
     
     def load_processed_data(self):
         """Load previously processed data for instant startup"""
@@ -343,7 +320,7 @@ class OptimizedSocialMediaRAG:
             if not (os.path.exists(embeddings_path) and os.path.exists(chunks_path)):
                 return False
             
-            print("🚀 Loading preprocessed data...")
+            print("Loading preprocessed data...")
             
             # Load embeddings matrix
             self.embeddings_matrix = np.load(embeddings_path)
@@ -365,11 +342,11 @@ class OptimizedSocialMediaRAG:
                 self.chunks.append(chunk)
             
             self.data_loaded = True
-            print(f"✅ Loaded {len(self.chunks)} chunks with {self.embeddings_matrix.shape} embeddings matrix")
+            print(f"Loaded {len(self.chunks)} chunks with {self.embeddings_matrix.shape} embeddings matrix")
             return True
             
         except Exception as e:
-            print(f"⚠️ Could not load processed data: {e}")
+            print(f"Could not load processed data: {e}")
             return False
     
     def enhance_query_with_gemini(self, user_query: str, gemini_model=None) -> str:
@@ -411,13 +388,13 @@ Enhanced search query:"""
             enhanced_query = enhanced_query.replace('"', '').replace('\n', ' ')
             enhanced_query = ' '.join(enhanced_query.split())  # Normalize whitespace
             
-            print(f"🔍 Original query: {user_query}")
-            print(f"🔍 Enhanced query: {enhanced_query}")
+            print(f"Original query: {user_query}")
+            print(f"Enhanced query: {enhanced_query}")
             
             return enhanced_query
             
         except Exception as e:
-            print(f"⚠️ Error enhancing query with Gemini: {e}")
+            print(f"Error enhancing query with Gemini: {e}")
             return user_query  # Fallback to original query
     def search(self, query_embedding: np.ndarray, top_k: int = 5, platform_filter: str = None, min_score: float = 0.05) -> List[Tuple[SocialMediaChunk, float]]:
         """Enhanced search using precomputed embeddings with dimension handling"""
@@ -429,7 +406,6 @@ Enhanced search query:"""
         data_dim = self.embeddings_matrix.shape[1]
         
         if query_dim != data_dim:
-            print(f"🔧 Adjusting query embedding from {query_dim}D to {data_dim}D")
             if query_dim < data_dim:
                 # Pad with zeros
                 padded_embedding = np.zeros(data_dim)
@@ -475,7 +451,6 @@ Enhanced search query:"""
         
         # If we don't have enough results, relax the constraints further
         if len(results) < top_k // 2 and min_score > 0.02:
-            print(f"⚠️ Low quality results ({len(results)}), relaxing constraints...")
             return self.search(query_embedding, top_k, platform_filter, min_score=0.02)
                 
         return results
@@ -622,15 +597,15 @@ Enhanced search query:"""
                 # Only keep results that are semantically similar to the original query
                 if semantic_similarity >= relevance_threshold:
                     filtered_results.append((chunk, score))
-                    print(f"✅ Relevant (sim: {semantic_similarity:.3f}): {chunk.content[:100]}...")
+                    print(f"Relevant (sim: {semantic_similarity:.3f}): {chunk.content[:100]}...")
                 else:
-                    print(f"❌ Filtered out (sim: {semantic_similarity:.3f}): {chunk.content[:100]}...")
+                    print(f"Filtered out (sim: {semantic_similarity:.3f}): {chunk.content[:100]}...")
             
-            print(f"🔍 Filtered {len(results)} → {len(filtered_results)} relevant results")
+            print(f"Filtered {len(results)} → {len(filtered_results)} relevant results")
             return filtered_results
             
         except Exception as e:
-            print(f"⚠️ Error in relevance filtering: {e}")
+            print(f"Error in relevance filtering: {e}")
             return results  # Return original results if filtering fails
 
 class OnlineSearchAgent:
@@ -821,9 +796,7 @@ class OptimizedConversationalAgent:
             try:
                 genai.configure(api_key=gemini_api_key)
                 self.model = genai.GenerativeModel('gemini-2.5-flash')
-                print("✅ Gemini AI configured")
             except Exception as e:
-                print(f"⚠️ Could not configure Gemini: {e}")
                 self.model = None
         else:
             self.model = None
@@ -834,41 +807,30 @@ class OptimizedConversationalAgent:
             return True
             
         if not self.rag.data_loaded or self.rag.embeddings_matrix is None:
-            print("⚠️ RAG system not loaded, cannot determine embedding dimension")
+            print("RAG system not loaded")
             return False
             
         # Detect embedding dimension from the data
         self.embedding_dimension = self.rag.embeddings_matrix.shape[1]
-        print(f"🔍 Detected embedding dimension: {self.embedding_dimension}")
         
         # Try to load query encoder with better error handling
         try:
             from sentence_transformers import SentenceTransformer
-            print("📦 Loading query encoder model...")
             
             # Use the best 1024D model to match precomputed embeddings
             model_name = 'sentence-transformers/all-roberta-large-v1'
-            print(f"🔧 Using high-quality 1024D model: {model_name} for {self.embedding_dimension}D embeddings")
             
             self.query_encoder = SentenceTransformer(model_name)
             
             # Verify dimensions match
             test_embedding = self.query_encoder.encode(["test"])
-            print(f"ℹ️ Model produces {test_embedding.shape[1]}D embeddings, data has {self.embedding_dimension}D")
-            
-            if test_embedding.shape[1] == self.embedding_dimension:
-                print("✅ Perfect dimension match!")
-            else:
-                print(f"⚠️ Dimension mismatch - will handle with padding/truncation")
-                
-            print("✅ Query encoder loaded successfully")
             return True
             
         except ImportError:
-            print("❌ sentence-transformers not installed. Install with: pip install sentence-transformers")
+            print("sentence-transformers not installed. Install with: pip install sentence-transformers")
             return False
         except Exception as e:
-            print(f"⚠️ Could not load query encoder: {e}")
+            print(f"Could not load query encoder: {e}")
             return False
     
     def add_to_conversation_history(self, user_query: str, ai_response: str):
@@ -922,14 +884,13 @@ class OptimizedConversationalAgent:
                 }
 
         try:
-            print(f"⚡ Starting optimized chat for query: {user_query}")
             
             # 1. Check cache for query embedding first
             query_for_cache = f"{user_query}_{platform_filter or 'all'}"
             cached_embedding = self.rag.cache.get_embedding_cache(query_for_cache)
             
             if cached_embedding is not None:
-                print("⚡ Using cached embedding")
+                print("Using cached embedding")
                 enhanced_query_embedding = cached_embedding
                 enhanced_query = user_query  # Skip enhancement for cached queries
             else:
@@ -944,7 +905,6 @@ class OptimizedConversationalAgent:
             cached_rag_results = self.rag.cache.get_rag_results_cache(user_query, rag_params)
             
             if cached_rag_results is not None:
-                print("⚡ Using cached RAG results")
                 rag_results = cached_rag_results
             else:
                 # Search RAG system using enhanced query
@@ -967,16 +927,14 @@ class OptimizedConversationalAgent:
             if use_online:
                 cached_news = self.rag.cache.get_news_cache(user_query)
                 if cached_news is not None:
-                    print("⚡ Using cached news results")
                     online_results = cached_news
                 else:
                     try:
-                        print("🔍 Searching for news sources...")
                         online_results = self.online_search.search_news(user_query, max_results=3)
                         # Cache the news results
                         self.rag.cache.set_news_cache(user_query, online_results)
                     except Exception as e:
-                        print(f"⚠️ Online search failed: {e}")
+                        print(f"Online search failed: {e}")
                         online_results = self.online_search._get_synthetic_news(user_query, max_results=2)
             
             # 4. Generate images/graphs (skip for similar recent queries to save time)
@@ -988,22 +946,18 @@ class OptimizedConversationalAgent:
                 query_lower = user_query.lower()
                 visual_keywords = ['who is', 'picture', 'image', 'photo', 'looks like', 'appearance']
                 if any(keyword in query_lower for keyword in visual_keywords):
-                    print("�️ Generating image for visual query...")
                     generated_image = self.image_generator.generate_image_for_query(user_query, self.model)
-                    if generated_image:
-                        print(f"✅ Generated image: {generated_image['search_term']}")
+                    
                 
                 # Only generate graphs if we have enough data and it's explicitly requested
                 graph_keywords = ['chart', 'graph', 'analysis', 'trend', 'comparison', 'data', 'statistics']
                 if any(keyword in query_lower for keyword in graph_keywords):
-                    print("� Generating graphs for data query...")
                     graphs = self.graph_generator.generate_insights_for_query(
                         user_query, rag_results, self.model
                     )
-                    print(f"✅ Generated {len(graphs)} insight graphs")
                         
             except Exception as e:
-                print(f"⚠️ Error with image/graph generation: {e}")
+                print(f"Error with image/graph generation: {e}")
                 generated_image = None
                 graphs = []
             
@@ -1074,7 +1028,7 @@ I want you return the result in the form of a paragraph. Don't include your opin
                     ai_response = self._generate_fallback_response(user_query, rag_context, online_results)
                     
             except Exception as e:
-                print(f"⚠️ Error with Gemini API: {e}")
+                print(f"Error with Gemini API: {e}")
                 ai_response = self._generate_fallback_response(user_query, rag_context, online_results)
             
             # 7. Create enhanced sources list
@@ -1142,7 +1096,7 @@ I want you return the result in the form of a paragraph. Don't include your opin
             }
             
         except Exception as e:
-            print(f"❌ Error in chat method: {e}")
+            print(f"Error in chat method: {e}")
             return {
                 "error": f"An error occurred: {str(e)}",
                 "response": "I'm sorry, but I encountered an error while processing your request. Please try again.",
@@ -1192,30 +1146,25 @@ def initialize_optimized_rag_system():
     global optimized_rag_system, optimized_agent, initialization_status
     
     if initialization_status['initialized']:
-        print("✅ Optimized RAG system already initialized")
         return True
     
     if initialization_status['loading']:
-        print("⏳ Optimized RAG system initialization in progress...")
         return False
     
     try:
         initialization_status['loading'] = True
-        print("🚀 Initializing optimized RAG system with precomputed embeddings...")
         
         optimized_rag_system = OptimizedSocialMediaRAG()
         
         # Try to load preprocessed data first
         if optimized_rag_system.load_processed_data():
-            print("✅ Loaded preprocessed data - instant startup!")
+            print("Loaded preprocessed data - instant startup!")
         else:
-            print("📂 Loading data from CSV files with embeddings...")
+            print("Loading data from CSV files with embeddings...")
             optimized_rag_system.load_reddit_data_with_embeddings()
             optimized_rag_system.load_youtube_data_with_embeddings()
             optimized_rag_system.build_embeddings_matrix()
         
-        # Initialize agent
-        print("🤖 Initializing optimized conversational agent...")
         optimized_agent = OptimizedConversationalAgent(
             optimized_rag_system, 
             gemini_api_key=os.getenv("GEMINI_API_KEY")  # Use environment variable for security
@@ -1229,13 +1178,13 @@ def initialize_optimized_rag_system():
         initialization_status['loading'] = False
         initialization_status['error'] = None
         
-        print("✅ Optimized RAG system initialized successfully!")
+        print("RAG system initialized successfully!")
         return True
         
     except Exception as e:
         initialization_status['loading'] = False
         initialization_status['error'] = str(e)
-        print(f"❌ Failed to initialize optimized RAG system: {e}")
+        print(f"Failed to initialize RAG system: {e}")
         return False
 
 @app.route('/api/status', methods=['GET'])
@@ -1327,7 +1276,7 @@ def search():
         return jsonify({"results": formatted_results})
         
     except Exception as e:
-        print(f"❌ Error in search endpoint: {e}")
+        print(f"Error in search endpoint: {e}")
         return jsonify({"error": f"Search failed: {str(e)}"}), 500
 
 @app.route('/api/conversation/clear', methods=['POST'])
@@ -1397,11 +1346,11 @@ if __name__ == '__main__':
     success = initialize_optimized_rag_system()
     
     if success:
-        print("✅ Optimized RAG system ready!")
-        print("🌐 Server will be available at: http://127.0.0.1:5000")
-        print("💡 Open frontend/index.html in your browser to start chatting")
+        print("Optimized RAG system ready!")
+        print("Server will be available at: http://127.0.0.1:5000")
+        print("Open frontend/index.html in your browser to start chatting")
         app.run(debug=True, port=5000)
     else:
-        print("❌ Failed to initialize optimized RAG system. Check your data files.")
+        print("Failed to initialize optimized RAG system. Check your data files.")
         print(f"Error: {initialization_status['error']}")
         exit(1)
